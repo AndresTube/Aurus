@@ -1,0 +1,27 @@
+name_menu:
+  update-in-ticks: 10
+  components:
+    display_name:
+      type: "TEXT"
+      x: 0
+      y: 0.5
+      size: 1.2
+      text: "<gray>Your name is <yellow>%aurus_variable_player_name%"
+
+    button_edit:
+      # Input can save input (in chat) to a placeholderapi variable (%aurus_variable_<variable_name>)
+      type: "INPUT"
+      x: 0
+      y: 0
+      size: 1.0
+      text: "<green>[ Click to edit name ]"
+      variable_name: "player_name"
+
+    button_close:
+      type: "BUTTON"
+      x: 0
+      y: -0.5
+      size: 0.8
+      text: "<red>Close menu"
+      actions:
+        - "[close]"

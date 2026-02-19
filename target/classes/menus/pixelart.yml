@@ -1,0 +1,17 @@
+pixelart:
+  components:
+    pixel_art:
+      type: "TEXT"
+      text: "<bold><gradient:red:yellow>                /           / <newline>                /' .,,,,  ./ <newline>                /';'     ,/ <newline>               / /  ,,//,`'` <newline>              ( ,, '_,  ,,,' `` <newline>              |     /@  ,,, ;\" ` <newline>             /    .   ,''/' `,`` <newline>            /   .      ./, `,, ` ; <newline>         ,./  .   ,-,',` ,,/''\\,' <newline>        |   /; ./,,'`,,'' |   | <newline>        |     /   ','     /   | <newline>         \\___/'   '      |     | <newline>           `,,'  |       /     `\\ <newline>                /       |        ~\\ <newline>               '        ( <newline>              : <newline>             ; .         \\-- <newline>           :   \\         ;</gradient>"
+      background: false
+      x: 0.0
+      y: -1.0
+      size: 1.0
+    credits:
+      type: "BUTTON"
+      text: "Click here for art credits"
+      x: 0.0
+      y: -2.0
+      size: 0.6
+      actions:
+        - "[message] <gray>Art by Ooyamaneko: <aqua><click:open_url:'https://www.asciiart.eu/art/c4a5475ba0277bac'>[Click Here to go to the original art]</click>"

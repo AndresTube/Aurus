@@ -1,0 +1,30 @@
+cosmetic_preview:
+  components:
+    item_display:
+      type: "ITEM"
+      material: "DRAGON_EGG"
+      x: 0.0
+      y: 1.0
+      size: 1.5
+      animations:
+        x-formula: "sin(t * 0.5) * 1.5"
+        scale-formula: "1.5 - (abs(sin(t * 0.5)) * 0.5)"
+        rotation-formula: "t * 20"
+    info:
+      type: "TEXT"
+      text: "<gradient:gold:yellow>¡New Dragon egg cosmetic!"
+      x: 0.0
+      y: 0.0
+      size: 2.0
+      animations:
+        y-formula: "sin(t * 2) * 0.1"
+    buy_btn:
+      type: "BUTTON"
+      text: "<green>[ BUY FOR 500$ ]"
+      x: 0.0
+      y: -1.0
+      actions:
+        - "[console] eco take %player% 500"
+        - "[message] <green>¡Bought Successfully!"
+        - "[console] minecraft:give dragon_egg %player%"
+        - "close"

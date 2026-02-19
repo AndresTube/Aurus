@@ -1,0 +1,67 @@
+welcome_server:
+  components:
+    title:
+      type: "TEXT"
+      text: "<yellow>¡Welcome to <gradient:red:dark_red>MyServer.com</gradient><yellow>!"
+      background: false
+      x: 0.0
+      y: 2.7
+      size: 3.8
+    play:
+      type: "BUTTON"
+      text: "Play"
+      x: -3.0
+      y: 0.3
+      size: 2.0
+      actions:
+        - '[close]'
+      rotation:
+        x: 0
+        y: 45
+        z: 0
+    options:
+      type: "BUTTON"
+      text: "Options"
+      x: -3.0
+      y: -0.3
+      size: 1.0
+      actions:
+        - '[openmenu] name_menu'
+      rotation:
+        x: 0
+        y: 35
+        z: 0
+    quit:
+      type: "BUTTON"
+      text: "<red>Quit"
+      x: -3.0
+      y: -0.8
+      size: 1.0
+      actions:
+        - '[close]'
+      rotation:
+        x: 0
+        y: 35
+        z: 0
+    announce:
+      type: "TEXT"
+      text: "<yellow>ANNOUNCE"
+      background: false
+      x: 3.0
+      y: 0.0
+      size: 1.5
+      rotation:
+        x: 0
+        y: -35
+        z: 0
+    cosmetic:
+      type: "TEXT"
+      text: "!New <gradient:blue:dark_blue>Cat</gradient> Cosmetic!"
+      background: false
+      x: 3.0
+      y: -0.4
+      size: 1.0
+      rotation:
+        x: 0
+        y: -35
+        z: 0

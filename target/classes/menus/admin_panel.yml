@@ -1,0 +1,24 @@
+admin_panel:
+  components:
+    warning:
+      type: "TEXT"
+      text: "<gradient:dark_red:red><b>ADMIN PANEL"
+      x: 0.0
+      y: 1.0
+      scale: 2.0
+    day:
+      type: "TEXT"
+      text: "<yellow>Set DAY"
+      x: -1.0
+      y: 0.0
+      actions:
+        - "[console] time set day"
+        - "[broadcast] <yellow>%player% set the time to day!"
+    night:
+      type: "TEXT"
+      text: "<blue>Set NIGHT"
+      x: 1.0
+      y: 0.0
+      actions:
+        - "[console] time set night"
+        - "[broadcast] <blue>%player% set the time to night!"

@@ -1,0 +1,47 @@
+welcome_to_aurus:
+  components:
+    main_title:
+      type: "TEXT"
+      text: "<yellow>Testing</yellow><gradient:dark_purple:yellow> Aurus</gradient>"
+      background: false
+      x: 0.0
+      y: 1.5
+      scale: 2.0
+
+    player_greeting:
+      type: "TEXT"
+      text: "<gray>Hello! thanks for using Aurus</gray>"
+      background: false
+      x: 0.0
+      y: 0.8
+      scale: 1.0
+
+    shop_btn:
+      type: "BUTTON"
+      text: "<green>[ How to use ]"
+      x: -1.2
+      y: -0.4
+      scale: 1.2
+      actions:
+        - "[message] <green>link to the documentation ahhh placeholder"
+        - "close"
+
+    rules_btn:
+      type: "BUTTON"
+      text: "<blue>[ Example #1 ]"
+      x: 1.2
+      y: -0.4
+      scale: 1.2
+      actions:
+        - "[message] <green>Opening welcome_server..."
+        - "[openmenu] welcome_server"
+        - "close"
+
+
+    footer:
+      type: "TEXT"
+      text: "<dark_gray>~ Fendrixx</dark_gray>"
+      background: false
+      x: 0.0
+      y: -1.0
+      scale: 0.7

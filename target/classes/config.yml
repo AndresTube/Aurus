@@ -1,0 +1,8 @@
+cursor:
+  type: "TEXT" # ITEM, TEXT, BLOCK
+  value: "<white><bold>·" # Material or text
+  size: 1.0
+  rotation:
+    x: 0
+    y: 0
+    z: 0
