@@ -1,8 +1,8 @@
-### Aurus
+# Aurus
 
-[Version](https://img.shields.io/badge/Version-1.0.0_BETA-blue?style=flat-square)
-[Software](https://img.shields.io/badge/Software-Spigot-yellow?style=flat-square)
-[Author](https://img.shields.io/badge/Author-Fendrixx-red?style=flat-square)
+![Version](https://img.shields.io/badge/Version-1.0.0_BETA-blue?style=flat-square)
+![Software](https://img.shields.io/badge/Software-Spigot-yellow?style=flat-square)
+![Author](https://img.shields.io/badge/Author-Fendrixx-red?style=flat-square)
 
 
 ---
