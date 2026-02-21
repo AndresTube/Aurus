@@ -50,6 +50,7 @@ public class MenuRenderer {
         td.setText(ColorUtils.format(actionProcessor.parse(p, raw)));
         if (!conf.getBoolean("background", false)) td.setBackgroundColor(Color.fromARGB(0, 0, 0, 0));
         setupDisplay(td, scale, conf);
+        td.setBillboard(Display.Billboard.CENTER);
         return td;
     }
     public void setupDisplay(Display display, float scale, ConfigurationSection conf) {

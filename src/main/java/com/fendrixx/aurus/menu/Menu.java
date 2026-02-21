@@ -39,8 +39,9 @@ public class Menu {
         this.menuDistance = 2.5;
         this.cameraLocation = player.getLocation();
         this.cameraLocation.setPitch(0);
-        camera.startSpectating(player, cameraLocation);
-        player.teleport(cameraLocation);
+
+        camera.spawn(player, cameraLocation);
+
         spawnCursor();
         ConfigurationSection comps = section.getConfigurationSection("components");
         if (comps != null) {
@@ -54,7 +55,7 @@ public class Menu {
         int delay = section.getInt("update-in-ticks", 20);
         this.animator = new MenuAnimator(this, player, buttons, menuDistance, delay);
         this.animator.runTaskTimerAsynchronously(plugin, 0L, 1L);
-        player.hideEntity(plugin, player);
+        player.addPotionEffect(new org.bukkit.potion.PotionEffect(org.bukkit.potion.PotionEffectType.INVISIBILITY, 999999, 1, false, false));
     }
     private void spawnCursor() {
         ConfigurationSection c = plugin.getConfigHandler().getCursorSection();
@@ -77,7 +78,9 @@ public class Menu {
     public void close() {
         if (oldLocation != null && player.isOnline()) player.teleport(oldLocation);
         if (animator != null) animator.cancel();
-        camera.stopSpectating(player);
+        if (camera != null) {
+            camera.despawn(player);
+        }
         if (cursorEntity != null) cursorEntity.remove();
         buttons.forEach(b -> b.getDisplay().remove());
         buttons.clear();

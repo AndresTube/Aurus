@@ -13,6 +13,7 @@ import com.github.retrooper.packetevents.PacketEvents;
 import io.github.retrooper.packetevents.factory.spigot.SpigotPacketEventsBuilder;
 import net.kyori.adventure.platform.bukkit.BukkitAudiences;
 import org.bukkit.Bukkit;
+import org.bukkit.entity.Player;
 import org.bukkit.plugin.java.JavaPlugin;
 public class Aurus extends JavaPlugin {
     private MenuManager menuManager;
@@ -48,19 +49,20 @@ public class Aurus extends JavaPlugin {
         getServer().getPluginManager().registerEvents(new MoveListener(this), this);
         getServer().getPluginManager().registerEvents(this.inputProcessor, this);
 
-        // menu interaction with packetevents
-        // (if I use bukkit normal one, it gives me a "Cannot interact with your" error"
         PacketEvents.getAPI().getEventManager().registerListener(
                 new com.github.retrooper.packetevents.event.PacketListener() {
                     @Override
                     public void onPacketReceive(com.github.retrooper.packetevents.event.PacketReceiveEvent event) {
                         if (event.getPacketType() == com.github.retrooper.packetevents.protocol.packettype.PacketType.Play.Client.INTERACT_ENTITY) {
-                            com.github.retrooper.packetevents.wrapper.play.client.WrapperPlayClientInteractEntity packet =
-                                    new com.github.retrooper.packetevents.wrapper.play.client.WrapperPlayClientInteractEntity(event);
-                            if (packet.getAction() == com.github.retrooper.packetevents.wrapper.play.client.WrapperPlayClientInteractEntity.InteractAction.ATTACK) {
-                                org.bukkit.entity.Player p = (org.bukkit.entity.Player) event.getPlayer();
-                                Menu menu = menuManager.getActiveMenu(p.getUniqueId());
-                                if (menu != null) {
+                            var packet = new com.github.retrooper.packetevents.wrapper.play.client.WrapperPlayClientInteractEntity(event);
+
+                            org.bukkit.entity.Player p = (org.bukkit.entity.Player) event.getPlayer();
+                            if (p == null) return;
+
+                            Menu menu = menuManager.getActiveMenu(p.getUniqueId());
+
+                            if (menu != null && menu.getCamera() != null && packet.getEntityId() == menu.getCamera().getEntityId()) {
+                                if (packet.getAction() == com.github.retrooper.packetevents.wrapper.play.client.WrapperPlayClientInteractEntity.InteractAction.ATTACK) {
                                     org.bukkit.Bukkit.getScheduler().runTask(Aurus.this, menu::handleInteraction);
                                 }
                             }
