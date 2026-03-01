@@ -38,23 +38,35 @@ public class MenuAnimator extends BukkitRunnable {
 
         for (MenuButton btn : buttons) {
             ConfigurationSection conf = btn.getConfig();
+            ConfigurationSection anim = conf.getConfigurationSection("animations");
+            if (anim == null) continue;
+
             Display display = btn.getDisplay();
+            Transformation trans = display.getTransformation();
+            boolean changed = false;
 
-            if (conf.contains("animations")) {
-                ConfigurationSection anim = conf.getConfigurationSection("animations");
-                double x = conf.getDouble("x") + (anim.contains("x-formula") ? MathUtil.evaluate(anim.getString("x-formula"), ticks) : 0);
-                double y = conf.getDouble("y") + (anim.contains("y-formula") ? MathUtil.evaluate(anim.getString("y-formula"), ticks) : 0);
-                display.teleport(menu.calculateComponentLocation(x, y));
+            if (anim.contains("x-formula") || anim.contains("y-formula")) {
+                float offX = (float) MathUtil.evaluate(anim.getString("x-formula", "0"), ticks);
+                float offY = (float) MathUtil.evaluate(anim.getString("y-formula", "0"), ticks);
+                trans.getTranslation().set(offX, offY, 0);
+                changed = true;
+            }
 
-                Transformation trans = display.getTransformation();
-                if (anim.contains("scale-formula")) {
-                    float s = (float) MathUtil.evaluate(anim.getString("scale-formula"), ticks);
-                    trans.getScale().set(s, s, s);
-                }
-                if (anim.contains("rotation-formula")) {
-                    float r = (float) MathUtil.evaluate(anim.getString("rotation-formula"), ticks);
-                    trans.getLeftRotation().rotationXYZ(0, 0, (float) Math.toRadians(r));
-                }
+            if (anim.contains("scale-formula")) {
+                float s = (float) MathUtil.evaluate(anim.getString("scale-formula"), ticks);
+                trans.getScale().set(s, s, s);
+                changed = true;
+            }
+
+            if (anim.contains("rotation-formula")) {
+                float r = (float) Math.toRadians(MathUtil.evaluate(anim.getString("rotation-formula"), ticks));
+                trans.getLeftRotation().identity().rotateZ(r);
+                changed = true;
+            }
+
+            if (changed) {
+                display.setInterpolationDuration(1);
+                display.setInterpolationDelay(0);
                 display.setTransformation(trans);
             }
         }

@@ -65,9 +65,9 @@ public class ConfigHandler {
                 YamlConfiguration menuConfig = new YamlConfiguration();
                 menuConfig.load(file);
                 menus.put(name, menuConfig);
-                Bukkit.getConsoleSender().sendMessage(ColorUtils.format("<dark_gray>[<green>✔<dark_gray>] <gray>Loaded menu: <white>" + name));
+                Bukkit.getConsoleSender().sendMessage(ColorUtils.format(prefix + "<dark_gray>[<green>✔<dark_gray>] <gray>Loaded menu: <white>" + name));
             } catch (Exception e) {
-                Bukkit.getConsoleSender().sendMessage(ColorUtils.format("<dark_gray>[<red>✘<dark_gray>] <red>Error loading <yellow>" + file.getName() + "<red>: " + e.getMessage()));
+                Bukkit.getConsoleSender().sendMessage(ColorUtils.format(prefix + "<dark_gray>[<red>✘<dark_gray>] <red>Error loading <yellow>" + file.getName() + "<red>: " + e.getMessage()));
             }
         }
     }

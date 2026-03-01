@@ -60,7 +60,6 @@ public class MenuRenderer {
     }
 
     public void setupDisplay(Display display, float scale, ConfigurationSection conf) {
-        display.setBillboard(Display.Billboard.CENTER);
         Transformation trans = display.getTransformation();
         trans.getScale().set(new Vector3f(scale, scale, scale));
         if (conf != null && conf.contains("rotation")) {
