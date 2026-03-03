@@ -15,7 +15,7 @@ public class PAPIExpansion extends PlaceholderExpansion {
 
     @Override
     public String getIdentifier() {
-        return "Aurus";
+        return "aurus";
     }
 
     @Override

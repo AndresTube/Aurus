@@ -22,12 +22,12 @@
             <url>https://hub.spigotmc.org/nexus/content/repositories/snapshots/</url>
         </repository>
         <repository>
-            <id>codemc-public</id>
-            <url>https://repo.codemc.io/repository/maven-public/</url>
-        </repository>
-        <repository>
             <id>placeholderapi</id>
             <url>https://repo.helpch.at/releases/</url>
+        </repository>
+        <repository>
+            <id>codemc-releases</id>
+            <url>https://repo.codemc.io/repository/maven-releases/</url>
         </repository>
     </repositories>
 
@@ -39,13 +39,6 @@
             <scope>provided</scope>
         </dependency>
         
-        <dependency>
-            <groupId>com.github.retrooper</groupId>
-            <artifactId>packetevents-spigot</artifactId>
-            <version>2.11.2</version>
-            <scope>compile</scope>
-        </dependency>
-
         <dependency>
             <groupId>net.kyori</groupId>
             <artifactId>adventure-platform-bukkit</artifactId>
@@ -77,6 +70,13 @@
             <version>0.4.8</version>
         </dependency>
 
+        <dependency>
+            <groupId>com.github.retrooper</groupId>
+            <artifactId>packetevents-spigot</artifactId>
+            <version>2.11.2</version>
+            <scope>provided</scope>
+        </dependency>
+
     </dependencies>
 
     <build>
@@ -94,16 +94,16 @@
                         <configuration>
                             <relocations>
                                 <relocation>
-                                    <pattern>com.github.retrooper.packetevents</pattern>
-                                    <shadedPattern>com.fendrixx.aurus.libs.packetevents</shadedPattern>
-                                </relocation>
-                                <relocation>
                                     <pattern>net.kyori</pattern>
                                     <shadedPattern>com.fendrixx.aurus.libs.kyori</shadedPattern>
                                 </relocation>
                                 <relocation>
                                     <pattern>net.objecthunter</pattern>
                                     <shadedPattern>com.fendrixx.aurus.libs.exp4j</shadedPattern>
+                                </relocation>
+                                <relocation>
+                                    <pattern>com.github.retrooper</pattern>
+                                    <shadedPattern>com.fendrixx.aurus.libs.packetevents</shadedPattern>
                                 </relocation>
                             </relocations>
                         </configuration>

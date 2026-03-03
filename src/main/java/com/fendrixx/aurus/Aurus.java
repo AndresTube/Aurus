@@ -26,14 +26,14 @@ public class Aurus extends JavaPlugin {
     private ConfigHandler configHandler;
     private ActionProcessor actionProcessor;
     private InputProcessor inputProcessor;
-    private PAPIExpansion aurusExpansion;
 
     @Override
     public void onLoad() {
         PacketEvents.setAPI(SpigotPacketEventsBuilder.build(this));
         PacketEvents.getAPI().load();
 
-        Bukkit.getConsoleSender().sendMessage(ColorUtils.format("<dark_gray>[<gradient:dark_purple:yellow> Aurus </gradient><dark_gray>] [<yellow>↺<dark_gray>] <yellow>Plugin loading..."));
+        Bukkit.getConsoleSender().sendMessage(ColorUtils.format(
+                "<dark_gray>[<gradient:dark_purple:yellow> Aurus </gradient><dark_gray>] [<yellow>↺<dark_gray>] <yellow>Plugin loading..."));
     }
 
     @Override
@@ -43,6 +43,7 @@ public class Aurus extends JavaPlugin {
 
         this.configHandler = new ConfigHandler(this);
         this.menuManager = new MenuManager(this);
+        this.actionProcessor = new ActionProcessor(this);
         this.inputProcessor = new InputProcessor(this);
 
         if (Bukkit.getPluginManager().getPlugin("PlaceholderAPI") != null) {
@@ -63,20 +64,24 @@ public class Aurus extends JavaPlugin {
 
     @Override
     public void onDisable() {
-        Bukkit.getConsoleSender().sendMessage(ColorUtils.format("<dark_gray>[<gradient:dark_purple:yellow> Aurus </gradient><dark_gray>] [<yellow>↺<dark_gray>] <yellow>Disabling menus..."));
+        Bukkit.getConsoleSender().sendMessage(ColorUtils.format(
+                "<dark_gray>[<gradient:dark_purple:yellow> Aurus </gradient><dark_gray>] [<yellow>↺<dark_gray>] <yellow>Disabling menus..."));
         if (this.menuManager != null) {
             this.menuManager.closeAll();
         }
 
-        Bukkit.getConsoleSender().sendMessage(ColorUtils.format("<dark_gray>[<gradient:dark_purple:yellow> Aurus </gradient><dark_gray>] [<yellow>↺<dark_gray>] <yellow>Disabling adventure..."));
+        Bukkit.getConsoleSender().sendMessage(ColorUtils.format(
+                "<dark_gray>[<gradient:dark_purple:yellow> Aurus </gradient><dark_gray>] [<yellow>↺<dark_gray>] <yellow>Disabling adventure..."));
         if (this.adventure != null) {
             this.adventure.close();
         }
 
-        Bukkit.getConsoleSender().sendMessage(ColorUtils.format("<dark_gray>[<gradient:dark_purple:yellow> Aurus </gradient><dark_gray>] [<yellow>↺<dark_gray>] <yellow>Disabling packetevents..."));
+        Bukkit.getConsoleSender().sendMessage(ColorUtils.format(
+                "<dark_gray>[<gradient:dark_purple:yellow> Aurus </gradient><dark_gray>] [<yellow>↺<dark_gray>] <yellow>Disabling packetevents..."));
         PacketEvents.getAPI().terminate();
 
-        Bukkit.getConsoleSender().sendMessage(ColorUtils.format("<dark_gray>[<gradient:dark_purple:yellow> Aurus </gradient><dark_gray>] [<green>✔<dark_gray>] <green>Plugin disabled!"));
+        Bukkit.getConsoleSender().sendMessage(ColorUtils.format(
+                "<dark_gray>[<gradient:dark_purple:yellow> Aurus </gradient><dark_gray>] [<green>✔<dark_gray>] <green>Plugin disabled!"));
     }
 
     private void registerCommands() {
@@ -103,8 +108,10 @@ public class Aurus extends JavaPlugin {
     }
 
     private void sendStartupMessage() {
-        Bukkit.getConsoleSender().sendMessage(ColorUtils.format("<dark_gray>[<gradient:dark_purple:yellow> Aurus </gradient><dark_gray>] [<green>✔<dark_gray>] <green>Plugin enabled!"));
-        Bukkit.getConsoleSender().sendMessage(ColorUtils.format("<dark_gray>[<gradient:dark_purple:yellow> Aurus </gradient><dark_gray>] [<yellow>!<dark_gray>] <gold>ty for using my plugin! <dark_gray>~ Fendrixx"));
+        Bukkit.getConsoleSender().sendMessage(ColorUtils.format(
+                "<dark_gray>[<gradient:dark_purple:yellow> Aurus </gradient><dark_gray>] [<green>✔<dark_gray>] <green>Plugin enabled!"));
+        Bukkit.getConsoleSender().sendMessage(ColorUtils.format(
+                "<dark_gray>[<gradient:dark_purple:yellow> Aurus </gradient><dark_gray>] [<yellow>!<dark_gray>] <gold>ty for using my plugin! <dark_gray>~ Fendrixx"));
         Bukkit.getConsoleSender().sendMessage(ColorUtils.format("""
                 \s
                 <gradient:dark_purple:yellow>| ░█▀▀█⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀</gradient>
@@ -115,9 +122,23 @@ public class Aurus extends JavaPlugin {
                 """));
     }
 
-    public BukkitAudiences adventure() { return this.adventure; }
-    public MenuManager getMenuManager() { return this.menuManager; }
-    public ConfigHandler getConfigHandler() { return this.configHandler; }
-    public ActionProcessor getActionProcessor() {return this.actionProcessor; }
-    public InputProcessor getInputProcessor() {return this.inputProcessor; }
+    public BukkitAudiences adventure() {
+        return this.adventure;
+    }
+
+    public MenuManager getMenuManager() {
+        return this.menuManager;
+    }
+
+    public ConfigHandler getConfigHandler() {
+        return this.configHandler;
+    }
+
+    public ActionProcessor getActionProcessor() {
+        return this.actionProcessor;
+    }
+
+    public InputProcessor getInputProcessor() {
+        return this.inputProcessor;
+    }
 }

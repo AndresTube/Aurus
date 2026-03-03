@@ -32,9 +32,11 @@ public class ConfigHandler {
             plugin.saveDefaultConfig();
             plugin.reloadConfig();
             this.config = plugin.getConfig();
-            Bukkit.getConsoleSender().sendMessage(ColorUtils.format(prefix + "<dark_gray>[<green>✔<dark_gray>] <green>Main config loaded successfully!"));
+            Bukkit.getConsoleSender().sendMessage(ColorUtils
+                    .format(prefix + "<dark_gray>[<green>✔<dark_gray>] <green>Main config loaded successfully!"));
         } catch (Exception e) {
-            Bukkit.getConsoleSender().sendMessage(ColorUtils.format(prefix + "<dark_gray>[<red>✘<dark_gray>] <red>Failed to load config: " + e.getMessage()));
+            Bukkit.getConsoleSender().sendMessage(ColorUtils
+                    .format(prefix + "<dark_gray>[<red>✘<dark_gray>] <red>Failed to load config: " + e.getMessage()));
             this.config = new YamlConfiguration();
         }
     }
@@ -52,12 +54,14 @@ public class ConfigHandler {
                 plugin.saveResource("menus/animated_menu.yml", false);
                 plugin.saveResource("menus/pixelart.yml", false);
             } catch (Exception e) {
-                Bukkit.getConsoleSender().sendMessage(ColorUtils.format(prefix + "<dark_gray>[<yellow>!<dark_gray>] <gray>Could not save default menus."));
+                Bukkit.getConsoleSender().sendMessage(ColorUtils
+                        .format(prefix + "<dark_gray>[<yellow>!<dark_gray>] <gray>Could not save default menus."));
             }
         }
 
         File[] files = folder.listFiles((dir, name) -> name.endsWith(".yml"));
-        if (files == null) return;
+        if (files == null)
+            return;
 
         for (File file : files) {
             try {
@@ -65,15 +69,19 @@ public class ConfigHandler {
                 YamlConfiguration menuConfig = new YamlConfiguration();
                 menuConfig.load(file);
                 menus.put(name, menuConfig);
-                Bukkit.getConsoleSender().sendMessage(ColorUtils.format(prefix + "<dark_gray>[<green>✔<dark_gray>] <gray>Loaded menu: <white>" + name));
+                Bukkit.getConsoleSender().sendMessage(ColorUtils
+                        .format(prefix + "<dark_gray>[<green>✔<dark_gray>] <gray>Loaded menu: <white>" + name));
             } catch (Exception e) {
-                Bukkit.getConsoleSender().sendMessage(ColorUtils.format(prefix + "<dark_gray>[<red>✘<dark_gray>] <red>Error loading <yellow>" + file.getName() + "<red>: " + e.getMessage()));
+                Bukkit.getConsoleSender().sendMessage(
+                        ColorUtils.format(prefix + "<dark_gray>[<red>✘<dark_gray>] <red>Error loading <yellow>"
+                                + file.getName() + "<red>: " + e.getMessage()));
             }
         }
     }
 
     public ConfigurationSection getMenuSection(String menuId) {
-        if (menuId == null || menuId.isEmpty()) return null;
+        if (menuId == null || menuId.isEmpty())
+            return null;
 
         for (FileConfiguration menuFile : menus.values()) {
             if (menuFile.isConfigurationSection(menuId)) {
@@ -97,30 +105,6 @@ public class ConfigHandler {
             keys.addAll(config.getConfigurationSection("menus").getKeys(false));
         }
         return keys;
-    }
-
-    public String getGlobalCursor() {
-        return config != null ? config.getString("cursor", "<red><bold>!") : "<red><bold>!";
-    }
-
-    public Location getLocation(String menuId) {
-        ConfigurationSection section = getMenuSection(menuId);
-        if (section == null || !section.isConfigurationSection("location")) return null;
-
-        ConfigurationSection loc = section.getConfigurationSection("location");
-        try {
-            return new Location(
-                    Bukkit.getWorld(loc.getString("world", "world")),
-                    loc.getDouble("x"),
-                    loc.getDouble("y"),
-                    loc.getDouble("z"),
-                    (float) loc.getDouble("yaw"),
-                    (float) loc.getDouble("pitch")
-            );
-        } catch (Exception e) {
-            Bukkit.getConsoleSender().sendMessage(ColorUtils.format(prefix + "<dark_gray>[<red>✘<dark_gray>] <red>Invalid location for menu: " + menuId));
-            return null;
-        }
     }
 
     public ConfigurationSection getCursorSection() {

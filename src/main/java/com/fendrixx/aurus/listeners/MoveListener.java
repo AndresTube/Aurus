@@ -36,6 +36,8 @@ public class MoveListener implements Listener {
             } else {
                 lastSafeLocations.put(player.getUniqueId(), event.getFrom().toVector());
             }
+        } else {
+            lastSafeLocations.remove(player.getUniqueId());
         }
     }
 

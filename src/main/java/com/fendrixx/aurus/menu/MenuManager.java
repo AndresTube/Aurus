@@ -40,18 +40,9 @@ public class MenuManager {
     }
 
     public void closeAll() {
-        activeMenus.values().forEach(Menu::close);
+        for (Menu menu : new java.util.ArrayList<>(activeMenus.values())) {
+            menu.close();
+        }
         activeMenus.clear();
-    }
-
-    public void startUpdateTask() {
-        new BukkitRunnable() {
-            @Override
-            public void run() {
-                for (Menu menu : activeMenus.values()) {
-                    menu.updateVisuals();
-                }
-            }
-        }.runTaskTimer(plugin, 0L, 5L);
     }
 }

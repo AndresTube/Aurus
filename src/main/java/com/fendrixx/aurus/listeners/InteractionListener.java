@@ -32,6 +32,12 @@ public class InteractionListener implements Listener {
         processMenuClick(player, menu);
     }
 
+    public void handle3DClick(Player player) {
+        Menu menu = plugin.getMenuManager().getActiveMenu(player.getUniqueId());
+        if (menu == null) return;
+        processMenuClick(player, menu);
+    }
+
     private void processMenuClick(Player player, Menu menu) {
         if (menu.getCursor() == null) return;
 

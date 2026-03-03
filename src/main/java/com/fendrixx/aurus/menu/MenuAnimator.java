@@ -39,7 +39,8 @@ public class MenuAnimator extends BukkitRunnable {
         for (MenuButton btn : buttons) {
             ConfigurationSection conf = btn.getConfig();
             ConfigurationSection anim = conf.getConfigurationSection("animations");
-            if (anim == null) continue;
+            if (anim == null)
+                continue;
 
             Display display = btn.getDisplay();
             Transformation trans = display.getTransformation();
@@ -57,6 +58,17 @@ public class MenuAnimator extends BukkitRunnable {
                 changed = true;
             }
 
+            if (anim.contains("x-formula") || anim.contains("y-formula")) {
+                double rx = anim.contains("x-formula") ? MathUtil.evaluate(anim.getString("x-formula"), ticks) : 0;
+                double ry = anim.contains("y-formula") ? MathUtil.evaluate(anim.getString("y-formula"), ticks) : 0;
+
+                double baseX = conf.getDouble("x", 0.0);
+                double baseY = conf.getDouble("y", 0.0);
+
+                Location offsetLoc = menu.calculateComponentLocation(baseX + rx, baseY + ry);
+                display.teleport(offsetLoc);
+            }
+
             if (changed) {
                 display.setInterpolationDuration(1);
                 display.setInterpolationDelay(0);
@@ -64,8 +76,8 @@ public class MenuAnimator extends BukkitRunnable {
             }
         }
 
-
-        Location newPos = MathUtil.getCursorLocation(menu.getCamera().getEyeLocation(), menu.getCamera().getLocation().getYaw(),
+        Location newPos = MathUtil.getCursorLocation(menu.getCamera().getEyeLocation(),
+                menu.getCamera().getLocation().getYaw(),
                 player.getLocation().getYaw(), player.getLocation().getPitch(), distance);
         menu.getCursor().teleport(newPos);
 

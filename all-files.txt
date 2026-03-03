@@ -1,0 +1,1671 @@
+FILE: ./src/main/java/com/fendrixx/aurus/menu/MenuManager.java
+package com.fendrixx.aurus.menu;
+
+import com.fendrixx.aurus.Aurus;
+import org.bukkit.entity.Player;
+import org.bukkit.scheduler.BukkitRunnable;
+
+import java.util.HashMap;
+import java.util.Map;
+import java.util.UUID;
+
+public class MenuManager {
+    private final Aurus plugin;
+    private final Map<UUID, Menu> activeMenus = new HashMap<>();
+
+    public MenuManager(Aurus plugin) {
+        this.plugin = plugin;
+    }
+
+    public void openMenu(Player player, String menuId) {
+        closeMenu(player);
+
+        Menu menu = new Menu(plugin, player);
+        menu.open(menuId);
+        activeMenus.put(player.getUniqueId(), menu);
+    }
+
+    public void closeMenu(Player player) {
+        Menu menu = activeMenus.remove(player.getUniqueId());
+        if (menu != null) {
+            menu.close();
+        }
+    }
+
+    public Menu getActiveMenu(UUID uuid) {
+        return activeMenus.get(uuid);
+    }
+
+    public void removeMenu(UUID uuid) {
+        activeMenus.remove(uuid);
+    }
+
+    public void closeAll() {
+        activeMenus.values().forEach(Menu::close);
+        activeMenus.clear();
+    }
+
+    public void startUpdateTask() {
+        new BukkitRunnable() {
+            @Override
+            public void run() {
+                for (Menu menu : activeMenus.values()) {
+                    menu.updateVisuals();
+                }
+            }
+        }.runTaskTimer(plugin, 0L, 5L);
+    }
+}
+
+FILE: ./src/main/java/com/fendrixx/aurus/menu/MenuButton.java
+package com.fendrixx.aurus.menu;
+
+import com.fendrixx.aurus.util.ColorUtils;
+import me.clip.placeholderapi.PlaceholderAPI;
+import org.bukkit.configuration.ConfigurationSection;
+import org.bukkit.entity.Display;
+import org.bukkit.entity.Player;
+import org.bukkit.entity.TextDisplay;
+
+public class MenuButton {
+    private final Display display;
+    private final String rawText;
+    private final Runnable onClick;
+    private final String type;
+    private final String variableName;
+    private final ConfigurationSection config;
+
+    public MenuButton(Display display, String rawText, Runnable onClick, String type, String variableName, ConfigurationSection config) {
+        this.display = display;
+        this.rawText = rawText;
+        this.onClick = onClick;
+        this.type = type;
+        this.variableName = variableName;
+        this.config = config;
+    }
+
+    public void updateText(Player player) {
+        if (display instanceof TextDisplay td && rawText != null) {
+            String parsed = PlaceholderAPI.setPlaceholders(player, rawText);
+            td.setText(ColorUtils.format(parsed));
+        }
+    }
+
+    public Display getDisplay() { return display; }
+    public String getType() { return type; }
+    public String getVariableName() { return variableName; }
+    public ConfigurationSection getConfig() { return config; }
+    public void onClick() { if (onClick != null) onClick.run(); }
+}
+
+FILE: ./src/main/java/com/fendrixx/aurus/menu/Menu.java
+package com.fendrixx.aurus.menu;
+
+import com.fendrixx.aurus.Aurus;
+import com.fendrixx.aurus.processors.ActionProcessor;
+import com.fendrixx.aurus.util.ColorUtils;
+import com.fendrixx.aurus.util.MathUtil;
+import org.bukkit.Color;
+import org.bukkit.Location;
+import org.bukkit.configuration.ConfigurationSection;
+import org.bukkit.entity.*;
+import org.bukkit.util.Vector;
+
+import java.util.ArrayList;
+import java.util.List;
+
+public class Menu {
+    private final Aurus plugin;
+    private final Player player;
+    private final MenuCamera camera;
+    private final MenuRenderer renderer;
+    private final List<MenuButton> buttons = new ArrayList<>();
+
+    private Display cursorEntity;
+    private MenuAnimator animator;
+    private Location oldLocation;
+    private double menuDistance;
+
+    public Menu(Aurus plugin, Player player) {
+        this.plugin = plugin;
+        this.player = player;
+        this.camera = new MenuCamera(player);
+        this.renderer = new MenuRenderer(new ActionProcessor(plugin));
+    }
+
+    public void open(String menuId) {
+        ConfigurationSection section = plugin.getConfigHandler().getMenuSection(menuId);
+        if (section == null) return;
+
+        this.oldLocation = player.getLocation().clone();
+
+        this.menuDistance = section.getDouble("distance", 2.5);
+
+        Location savedLocation = player.getLocation().clone();
+        savedLocation.setPitch(0);
+
+        camera.spawn();
+        player.teleport(savedLocation);
+
+        spawnCursor();
+
+        ConfigurationSection comps = section.getConfigurationSection("components");
+        if (comps != null) {
+            for (String key : comps.getKeys(false)) {
+                ConfigurationSection c = comps.getConfigurationSection(key);
+                Location loc = calculateComponentLocation(c.getDouble("x"), c.getDouble("y"));
+                MenuButton btn = renderer.createComponent(player, c.getString("type", "BUTTON").toUpperCase(), c, loc, this::close);
+                if (btn != null) buttons.add(btn);
+            }
+        }
+
+        int delay = section.getInt("update-in-ticks", 20);
+        this.animator = new MenuAnimator(this, player, buttons, menuDistance, delay);
+        this.animator.runTaskTimer(plugin, 0L, 1L);
+
+        player.hideEntity(plugin, player);
+    }
+
+    private void spawnCursor() {
+        ConfigurationSection c = plugin.getConfigHandler().getCursorSection();
+        Location loc = player.getEyeLocation().add(player.getLocation().getDirection().multiply(menuDistance));
+        TextDisplay td = (TextDisplay) player.getWorld().spawnEntity(loc, EntityType.TEXT_DISPLAY);
+        td.setBillboard(org.bukkit.entity.Display.Billboard.FIXED);
+        td.setText(ColorUtils.format(c != null ? c.getString("value", "!") : "!"));
+        td.setBackgroundColor(Color.fromARGB(0, 0, 0, 0));
+        renderer.setupDisplay(td, (float) (c != null ? c.getDouble("size", 1.5) : 1.5), c);
+        this.cursorEntity = td;
+    }
+
+    public Location calculateComponentLocation(double x, double y) {
+        Location origin = player.getEyeLocation().clone().add(0, -0.4, 0);
+
+        Vector direction = player.getEyeLocation().getDirection().normalize();
+
+        Vector right = new Vector(-direction.getZ(), 0, direction.getX()).normalize();
+        Vector up = direction.clone().crossProduct(right).multiply(-1).normalize();
+
+        Location center = origin.add(direction.multiply(2));
+        center.add(right.multiply(x));
+        center.add(up.multiply(y));
+
+        center.setYaw(player.getLocation().getYaw() + 180f);
+        center.setPitch(-player.getLocation().getPitch());
+
+        return center;
+    }
+
+    public void close() {
+        if (oldLocation != null && player.isOnline()) player.teleport(oldLocation);
+        if (animator != null) animator.cancel();
+        camera.remove();
+        if (cursorEntity != null) cursorEntity.remove();
+        buttons.forEach(b -> b.getDisplay().remove());
+        buttons.clear();
+        plugin.getMenuManager().removeMenu(player.getUniqueId());
+        player.showEntity(plugin, player);
+    }
+
+    public void updateVisuals() {
+        for (MenuButton btn : buttons) {
+            btn.updateText(player);
+        }
+    }
+
+    public MenuCamera getCamera() { return camera; }
+    public Display getCursor() { return cursorEntity; }
+    public List<MenuButton> getButtons() { return buttons; }
+}
+
+FILE: ./src/main/java/com/fendrixx/aurus/menu/MenuRenderer.java
+package com.fendrixx.aurus.menu;
+
+import com.fendrixx.aurus.processors.ActionProcessor;
+import com.fendrixx.aurus.util.ColorUtils;
+import org.bukkit.Color;
+import org.bukkit.Location;
+import org.bukkit.Material;
+import org.bukkit.configuration.ConfigurationSection;
+import org.bukkit.entity.*;
+import org.bukkit.inventory.ItemStack;
+import org.bukkit.util.Transformation;
+import org.joml.Vector3f;
+
+public class MenuRenderer {
+    private final ActionProcessor actionProcessor;
+
+    public MenuRenderer(ActionProcessor actionProcessor) {
+        this.actionProcessor = actionProcessor;
+    }
+
+    public MenuButton createComponent(Player player, String type, ConfigurationSection conf, Location loc, Runnable closeAction) {
+        float size = (float) conf.getDouble("size", 1.0);
+        String rawText = conf.getString("text", "");
+
+        return switch (type) {
+            case "TEXT" -> {
+                TextDisplay td = spawnTextDisplay(loc, player, rawText, conf, size);
+                yield new MenuButton(td, rawText, null, "TEXT", null, conf);
+            }
+            case "BUTTON" -> {
+                TextDisplay td = spawnTextDisplay(loc, player, rawText, conf, size);
+                yield new MenuButton(td, rawText, () -> actionProcessor.processList(player, conf.getStringList("actions"), closeAction), "BUTTON", null, conf);
+            }
+            case "INPUT" -> {
+                TextDisplay td = spawnTextDisplay(loc, player, rawText, conf, size);
+                yield new MenuButton(td, rawText, () -> actionProcessor.processList(player, conf.getStringList("actions"), closeAction), "INPUT", conf.getString("variable_name"), conf);
+            }
+            case "ITEM" -> {
+                ItemDisplay id = (ItemDisplay) loc.getWorld().spawnEntity(loc, EntityType.ITEM_DISPLAY);
+                id.setItemStack(new ItemStack(Material.matchMaterial(conf.getString("material", "STONE"))));
+                setupDisplay(id, size, conf);
+                yield new MenuButton(id, null, null, "ITEM", null, conf);
+            }
+            case "BLOCK" -> {
+                BlockDisplay bd = (BlockDisplay) loc.getWorld().spawnEntity(loc, EntityType.BLOCK_DISPLAY);
+                bd.setBlock(Material.matchMaterial(conf.getString("material", "STONE")).createBlockData());
+                setupDisplay(bd, size, conf);
+                yield new MenuButton(bd, null, null, "BLOCK", null, conf);
+            }
+            default -> null;
+        };
+    }
+
+    private TextDisplay spawnTextDisplay(Location loc, Player p, String raw, ConfigurationSection conf, float size) {
+        TextDisplay td = (TextDisplay) loc.getWorld().spawnEntity(loc, EntityType.TEXT_DISPLAY);
+        td.setBillboard(Display.Billboard.FIXED);
+        td.setText(ColorUtils.format(actionProcessor.parse(p, raw)));
+        if (!conf.getBoolean("background", true)) td.setBackgroundColor(Color.fromARGB(0, 0, 0, 0));
+        setupDisplay(td, size, conf);
+        return td;
+    }
+
+    public void setupDisplay(Display display, float scale, ConfigurationSection conf) {
+        Transformation trans = display.getTransformation();
+        trans.getScale().set(new Vector3f(scale, scale, scale));
+        if (conf != null && conf.contains("rotation")) {
+            trans.getLeftRotation().rotationXYZ(
+                    (float) Math.toRadians(conf.getDouble("rotation.x")),
+                    (float) Math.toRadians(conf.getDouble("rotation.y")),
+                    (float) Math.toRadians(conf.getDouble("rotation.z"))
+            );
+        }
+        display.setTransformation(trans);
+    }
+}
+
+FILE: ./src/main/java/com/fendrixx/aurus/menu/MenuAnimator.java
+package com.fendrixx.aurus.menu;
+
+import com.fendrixx.aurus.util.MathUtil;
+import org.bukkit.Location;
+import org.bukkit.configuration.ConfigurationSection;
+import org.bukkit.entity.Display;
+import org.bukkit.entity.Player;
+import org.bukkit.scheduler.BukkitRunnable;
+import org.bukkit.util.Transformation;
+
+import java.util.List;
+
+public class MenuAnimator extends BukkitRunnable {
+    private final Menu menu;
+    private final Player player;
+    private final List<MenuButton> buttons;
+    private final double distance;
+    private final int updateDelay;
+    private double ticks = 0;
+    private int updateCounter = 0;
+
+    public MenuAnimator(Menu menu, Player player, List<MenuButton> buttons, double distance, int updateDelay) {
+        this.menu = menu;
+        this.player = player;
+        this.buttons = buttons;
+        this.distance = distance;
+        this.updateDelay = updateDelay;
+    }
+
+    @Override
+    public void run() {
+        if (menu.getCamera().getTripod() == null || !player.isOnline()) {
+            menu.close();
+            return;
+        }
+
+        ticks += 0.05;
+
+        for (MenuButton btn : buttons) {
+            ConfigurationSection conf = btn.getConfig();
+            ConfigurationSection anim = conf.getConfigurationSection("animations");
+            if (anim == null) continue;
+
+            Display display = btn.getDisplay();
+            Transformation trans = display.getTransformation();
+            boolean changed = false;
+
+            if (anim.contains("scale-formula")) {
+                float s = (float) MathUtil.evaluate(anim.getString("scale-formula"), ticks);
+                trans.getScale().set(s, s, s);
+                changed = true;
+            }
+
+            if (anim.contains("rotation-formula")) {
+                float r = (float) Math.toRadians(MathUtil.evaluate(anim.getString("rotation-formula"), ticks));
+                trans.getLeftRotation().identity().rotateZ(r);
+                changed = true;
+            }
+
+            if (changed) {
+                display.setInterpolationDuration(1);
+                display.setInterpolationDelay(0);
+                display.setTransformation(trans);
+            }
+        }
+
+
+        Location newPos = MathUtil.getCursorLocation(menu.getCamera().getEyeLocation(), menu.getCamera().getLocation().getYaw(),
+                player.getLocation().getYaw(), player.getLocation().getPitch(), distance);
+        menu.getCursor().teleport(newPos);
+
+        updateCounter++;
+        if (updateCounter >= updateDelay) {
+            buttons.forEach(b -> b.updateText(player));
+            updateCounter = 0;
+        }
+    }
+}
+
+FILE: ./src/main/java/com/fendrixx/aurus/menu/MenuCamera.java
+package com.fendrixx.aurus.menu;
+
+import com.fendrixx.aurus.util.NMSUtil;
+import org.bukkit.Location;
+import org.bukkit.entity.EntityType;
+import org.bukkit.entity.Pig;
+import org.bukkit.entity.Player;
+
+public class MenuCamera {
+    private final Player player;
+    private Pig tripod;
+
+    public MenuCamera(Player player) {
+        this.player = player;
+    }
+
+    public void spawn() {
+        Location location = player.getLocation();
+
+        tripod = (Pig) location.getWorld().spawnEntity(location, EntityType.PIG);
+        tripod.setInvisible(true);
+        tripod.setAI(false);
+        tripod.setGravity(false);
+        tripod.setSilent(true);
+        tripod.setInvulnerable(true);
+        tripod.setCollidable(false);
+
+        tripod.addPassenger(player);
+        NMSUtil.sendCameraPacket(player, tripod);
+    }
+
+    public void remove() {
+        NMSUtil.sendCameraPacket(player, player);
+
+        if (tripod != null) {
+            tripod.remove();
+        }
+    }
+
+    public Location getLocation() {
+        return tripod != null ? tripod.getLocation() : player.getLocation();
+    }
+
+    public Location getEyeLocation() {
+        return getLocation().clone().add(0, 1.5, 0);
+    }
+
+    public Pig getTripod() {
+        return tripod;
+    }
+}
+
+
+FILE: ./src/main/java/com/fendrixx/aurus/listeners/MoveListener.java
+package com.fendrixx.aurus.listeners;
+
+import com.fendrixx.aurus.Aurus;
+import org.bukkit.entity.Player;
+import org.bukkit.event.EventHandler;
+import org.bukkit.event.Listener;
+import org.bukkit.event.player.PlayerMoveEvent;
+import org.bukkit.event.player.PlayerQuitEvent;
+import org.bukkit.util.Vector;
+
+import java.util.HashMap;
+import java.util.Map;
+import java.util.UUID;
+
+public class MoveListener implements Listener {
+    private final Aurus plugin;
+    private final Map<UUID, Vector> lastSafeLocations = new HashMap<>();
+    private static final double MOVEMENT_THRESHOLD = 0.15;
+
+    public MoveListener(Aurus plugin) {
+        this.plugin = plugin;
+    }
+
+    @EventHandler
+    public void onMove(PlayerMoveEvent event) {
+        Player player = event.getPlayer();
+        if (plugin.getMenuManager().getActiveMenu(player.getUniqueId()) != null) {
+            Vector safeLoc = lastSafeLocations.get(player.getUniqueId());
+            if (safeLoc == null) {
+                lastSafeLocations.put(player.getUniqueId(), event.getFrom().toVector());
+                return;
+            }
+
+            if (event.getFrom().distance(event.getTo()) > MOVEMENT_THRESHOLD) {
+                event.setTo(event.getFrom().setDirection(event.getTo().getDirection()));
+            } else {
+                lastSafeLocations.put(player.getUniqueId(), event.getFrom().toVector());
+            }
+        }
+    }
+
+    @EventHandler
+    public void onQuit(PlayerQuitEvent event) {
+        lastSafeLocations.remove(event.getPlayer().getUniqueId());
+    }
+}
+
+FILE: ./src/main/java/com/fendrixx/aurus/listeners/InteractionListener.java
+package com.fendrixx.aurus.listeners;
+
+import com.fendrixx.aurus.Aurus;
+import com.fendrixx.aurus.menu.Menu;
+import com.fendrixx.aurus.menu.MenuButton;
+import org.bukkit.Sound;
+import org.bukkit.entity.Player;
+import org.bukkit.event.EventHandler;
+import org.bukkit.event.Listener;
+import org.bukkit.event.block.Action;
+import org.bukkit.event.player.PlayerInteractEvent;
+import org.bukkit.event.player.PlayerQuitEvent;
+
+public class InteractionListener implements Listener {
+    private final Aurus plugin;
+
+    public InteractionListener(Aurus plugin) {
+        this.plugin = plugin;
+    }
+
+    @EventHandler
+    public void onClick(PlayerInteractEvent event) {
+        Player player = event.getPlayer();
+        Menu menu = plugin.getMenuManager().getActiveMenu(player.getUniqueId());
+
+        if (menu == null) return;
+
+        event.setCancelled(true);
+
+        if (event.getAction() == Action.PHYSICAL) return;
+
+        processMenuClick(player, menu);
+    }
+
+    public void handle3DClick(Player player) {
+        Menu menu = plugin.getMenuManager().getActiveMenu(player.getUniqueId());
+        if (menu == null) return;
+        processMenuClick(player, menu);
+    }
+
+    private void processMenuClick(Player player, Menu menu) {
+        if (menu.getCursor() == null) return;
+
+        for (MenuButton btn : menu.getButtons()) {
+            if (btn.getDisplay() == null) continue;
+
+            double dist = menu.getCursor().getLocation().distance(btn.getDisplay().getLocation());
+
+            double clickRadius = 0.5 * btn.getConfig().getDouble("size", 1.0);
+
+            if (dist < clickRadius) {
+                if ("INPUT".equalsIgnoreCase(btn.getType())) {
+                    String variable = btn.getVariableName();
+                    plugin.getInputProcessor().startInput(player, variable);
+                }
+
+                btn.onClick();
+
+                player.playSound(player.getLocation(), Sound.UI_BUTTON_CLICK, 0.6f, 1.2f);
+
+                break;
+            }
+        }
+    }
+
+    @EventHandler
+    public void onQuit(PlayerQuitEvent event) {
+        plugin.getMenuManager().closeMenu(event.getPlayer());
+    }
+}
+
+FILE: ./src/main/java/com/fendrixx/aurus/util/ColorUtils.java
+package com.fendrixx.aurus.util;
+
+import net.kyori.adventure.text.Component;
+import net.kyori.adventure.text.format.TextDecoration;
+import net.kyori.adventure.text.minimessage.MiniMessage;
+import net.kyori.adventure.text.serializer.legacy.LegacyComponentSerializer;
+import org.jetbrains.annotations.NotNull;
+
+import java.util.List;
+import java.util.stream.Collectors;
+
+public class ColorUtils {
+
+    private static final MiniMessage MINI_MESSAGE = MiniMessage.miniMessage();
+
+    private static final LegacyComponentSerializer SERIALIZER = LegacyComponentSerializer.builder()
+            .hexColors()
+            .useUnusualXRepeatedCharacterHexFormat()
+            .character('§')
+            .build();
+
+    @NotNull
+    public static String format(@NotNull String message) {
+        if (message.isEmpty()) return message;
+
+        Component component = MINI_MESSAGE.deserialize(message)
+                .decoration(TextDecoration.ITALIC, TextDecoration.State.FALSE);
+
+        return SERIALIZER.serialize(component);
+    }
+
+    public static List<String> formatList(List<String> list) {
+        if (list == null) return List.of();
+        return list.stream().map(ColorUtils::format).collect(Collectors.toList());
+    }
+
+    @NotNull
+    public static Component parse(@NotNull String message) {
+        return MINI_MESSAGE.deserialize(message)
+                .decoration(TextDecoration.ITALIC, TextDecoration.State.FALSE);
+    }
+}
+
+FILE: ./src/main/java/com/fendrixx/aurus/util/MathUtil.java
+package com.fendrixx.aurus.util;
+
+import net.objecthunter.exp4j.Expression;
+import net.objecthunter.exp4j.ExpressionBuilder;
+import org.bukkit.Location;
+import org.bukkit.util.Vector;
+
+import java.util.HashMap;
+import java.util.Map;
+
+public class MathUtil {
+
+    private static final Map<String, Expression> cache = new HashMap<>();
+
+    public static Location getCursorLocation(Location cameraLoc, float cameraYaw, float playerYaw, float playerPitch, double distance) {
+        double yawRad = Math.toRadians(cameraYaw);
+
+        Vector forward = new Vector(-Math.sin(yawRad), 0, Math.cos(yawRad)).normalize();
+        Vector right = new Vector(forward.getZ(), 0, -forward.getX()).normalize();
+        Vector up = new Vector(0, 1, 0);
+
+        float deltaYaw = normalizeAngle(playerYaw - cameraYaw);
+        float limitedPitch = Math.max(-80, Math.min(80, playerPitch));
+
+        double x = -Math.tan(Math.toRadians(deltaYaw)) * distance;
+        double y = Math.tan(Math.toRadians(-limitedPitch)) * distance;
+
+        Location loc = cameraLoc.clone()
+                .add(forward.multiply(distance))
+                .add(right.multiply(x))
+                .add(up.multiply(y));
+
+        loc.setYaw(playerYaw + 180f);
+        loc.setPitch(-playerPitch);
+
+        return loc;
+    }
+
+    public static float normalizeAngle(float angle) {
+        while (angle <= -180) angle += 360;
+        while (angle > 180) angle -= 360;
+        return angle;
+    }
+
+    public static Location getComponentLocation(Location cameraLoc, float cameraYaw, double distance, double x, double y) {
+        double yawRad = Math.toRadians(cameraYaw);
+        Vector forward = new Vector(-Math.sin(yawRad), 0, Math.cos(yawRad)).normalize();
+        Vector right = new Vector(forward.getZ(), 0, -forward.getX()).normalize();
+        Vector up = new Vector(0, 1, 0);
+
+        return cameraLoc.clone()
+                .add(forward.multiply(distance))
+                .add(right.multiply(x))
+                .add(up.multiply(y));
+    }
+
+    public static double evaluate(String formula, double t) {
+        try {
+            Expression e = cache.computeIfAbsent(formula, f ->
+                    new ExpressionBuilder(f)
+                            .variable("t")
+                            .build()
+            );
+            return e.setVariable("t", t).evaluate();
+        } catch (Exception e) {
+            return 0;
+        }
+    }
+}
+
+FILE: ./src/main/java/com/fendrixx/aurus/util/NMSUtil.java
+package com.fendrixx.aurus.util;
+
+import org.bukkit.Bukkit;
+import org.bukkit.entity.Entity;
+import org.bukkit.entity.Player;
+
+import java.lang.reflect.Constructor;
+import java.lang.reflect.Field;
+import java.lang.reflect.Method;
+
+public class NMSUtil {
+
+    private static Method getHandlePlayerMethod;
+    private static Method getHandleEntityMethod;
+    private static Method sendPacketMethod;
+    private static Constructor<?> cameraPacketConstructor;
+    private static Field connectionField;
+    private static boolean initialized = false;
+
+    private static void init() {
+        if (initialized) return;
+        initialized = true;
+        try {
+            Class<?> craftPlayerClass = resolveCraftClass("entity.CraftPlayer");
+            Class<?> craftEntityClass = resolveCraftClass("entity.CraftEntity");
+            getHandlePlayerMethod = craftPlayerClass.getMethod("getHandle");
+            getHandleEntityMethod = craftEntityClass.getMethod("getHandle");
+
+            Class<?> serverPlayerClass = getHandlePlayerMethod.getReturnType();
+            Class<?> packetClass = Class.forName("net.minecraft.network.protocol.Packet");
+
+            for (Field f : serverPlayerClass.getFields()) {
+                Class<?> fieldType = f.getType();
+                for (Method m : fieldType.getMethods()) {
+                    if (m.getParameterCount() == 1 && packetClass.isAssignableFrom(m.getParameterTypes()[0])) {
+                        connectionField = f;
+                        sendPacketMethod = m;
+                        break;
+                    }
+                }
+                if (sendPacketMethod != null) break;
+            }
+
+            if (sendPacketMethod == null) {
+                throw new RuntimeException("Could not find send(Packet) method on server player connection");
+            }
+
+            Class<?> nmsEntityClass = getHandleEntityMethod.getReturnType();
+            Class<?> cameraClass = Class.forName("net.minecraft.network.protocol.game.ClientboundSetCameraPacket");
+            for (Constructor<?> c : cameraClass.getConstructors()) {
+                if (c.getParameterCount() == 1 && c.getParameterTypes()[0].isAssignableFrom(nmsEntityClass)) {
+                    cameraPacketConstructor = c;
+                    break;
+                }
+            }
+
+            if (cameraPacketConstructor == null) {
+                throw new RuntimeException("Could not find ClientboundSetCameraPacket constructor");
+            }
+
+        } catch (RuntimeException e) {
+            throw e;
+        } catch (Exception e) {
+            throw new RuntimeException("Failed to initialize NMS reflection", e);
+        }
+    }
+
+    private static Class<?> resolveCraftClass(String relativeClass) {
+        String serverPackage = Bukkit.getServer().getClass().getPackage().getName();
+        try {
+            return Class.forName(serverPackage + "." + relativeClass);
+        } catch (ClassNotFoundException e) {
+            throw new RuntimeException("Could not resolve CraftBukkit class: " + relativeClass, e);
+        }
+    }
+
+    public static void sendCameraPacket(Player player, Entity target) {
+        init();
+        try {
+            Object nmsTarget = getHandleEntityMethod.invoke(target);
+            Object packet = cameraPacketConstructor.newInstance(nmsTarget);
+            sendPacket(player, packet);
+        } catch (Exception e) {
+            throw new RuntimeException("Failed to send camera packet", e);
+        }
+    }
+
+    private static void sendPacket(Player player, Object packet) {
+        try {
+            Object handle = getHandlePlayerMethod.invoke(player);
+            Object connection = connectionField.get(handle);
+            sendPacketMethod.invoke(connection, packet);
+        } catch (Exception e) {
+            throw new RuntimeException("Failed to send packet", e);
+        }
+    }
+}
+
+
+FILE: ./src/main/java/com/fendrixx/aurus/commands/AurusCommand.java
+package com.fendrixx.aurus.commands;
+
+import com.fendrixx.aurus.Aurus;
+import net.kyori.adventure.text.minimessage.MiniMessage;
+import org.bukkit.command.Command;
+import org.bukkit.command.CommandExecutor;
+import org.bukkit.command.CommandSender;
+import org.bukkit.command.TabCompleter;
+import org.bukkit.entity.Player;
+import org.jetbrains.annotations.NotNull;
+
+import java.util.ArrayList;
+import java.util.List;
+
+public class AurusCommand implements CommandExecutor, TabCompleter {
+    private final Aurus plugin;
+    private final MiniMessage mm = MiniMessage.miniMessage();
+    private final String prefix = "<dark_gray>[<gradient:dark_purple:yellow> Aurus </gradient><dark_gray>] ";
+
+    public AurusCommand(Aurus plugin) {
+        this.plugin = plugin;
+    }
+
+    @Override
+    public boolean onCommand(@NotNull CommandSender sender, @NotNull Command command, @NotNull String label, String[] args) {
+        if (!(sender instanceof Player player)) return true;
+
+        if (args.length > 0) {
+            if (args[0].equalsIgnoreCase("open")) {
+                if (args.length < 2) {
+                    plugin.adventure().player(player).sendMessage(mm.deserialize(prefix + "<dark_gray>[<yellow>?<dark_gray>] <gray>Usage: /aurus open <menu_id>"));
+                    return true;
+                }
+
+                String menuId = args[1];
+                if (plugin.getConfigHandler().getMenuSection(menuId) == null) {
+                    plugin.adventure().player(player).sendMessage(mm.deserialize(prefix + "<dark_gray>[<red>✘<dark_gray>] <red>Menu <yellow>" + menuId + "</yellow> not found."));
+                    return true;
+                }
+
+                plugin.getMenuManager().openMenu(player, menuId);
+                return true;
+            }
+
+            if (args[0].equalsIgnoreCase("reload")) {
+                plugin.getMenuManager().closeAll();
+                plugin.getConfigHandler().reload();
+                plugin.adventure().player(player).sendMessage(mm.deserialize(prefix + "<dark_gray>[<green>✔<dark_gray>] <green>Configuration and menus reloaded."));
+                return true;
+            }
+
+            if (args[0].equalsIgnoreCase("close")) {
+                if (plugin.getMenuManager().getActiveMenu(player.getUniqueId()) != null) {
+                    plugin.getMenuManager().closeMenu(player);
+                    plugin.adventure().player(player).sendMessage(mm.deserialize(prefix + "<dark_gray>[<green>✔<dark_gray>] <green>Menu closed."));
+                } else {
+                    plugin.adventure().player(player).sendMessage(mm.deserialize(prefix + "<dark_gray>[<yellow>!<dark_gray>] <red>You don't have an active menu."));
+                }
+                return true;
+            }
+        }
+
+        plugin.adventure().player(player).sendMessage(mm.deserialize(prefix + "<dark_gray>[<yellow>?<dark_gray>] <gray>Available commands: <white>open, close, reload"));
+        return true;
+    }
+
+    @Override
+    public List<String> onTabComplete(@NotNull CommandSender sender, @NotNull Command command, @NotNull String alias, String[] args) {
+        List<String> suggestions = new ArrayList<>();
+        if (args.length == 1) {
+            suggestions.addAll(List.of("open", "reload", "close"));
+        } else if (args.length == 2 && args[0].equalsIgnoreCase("open")) {
+            suggestions.addAll(plugin.getConfigHandler().getMenuKeys());
+        }
+
+        String lastArg = args[args.length - 1].toLowerCase();
+        return suggestions.stream().filter(s -> s.toLowerCase().startsWith(lastArg)).toList();
+    }
+}
+
+FILE: ./src/main/java/com/fendrixx/aurus/config/ConfigHandler.java
+package com.fendrixx.aurus.config;
+
+import com.fendrixx.aurus.Aurus;
+import com.fendrixx.aurus.util.ColorUtils;
+import org.bukkit.Bukkit;
+import org.bukkit.Location;
+import org.bukkit.configuration.ConfigurationSection;
+import org.bukkit.configuration.file.FileConfiguration;
+import org.bukkit.configuration.file.YamlConfiguration;
+
+import java.io.File;
+import java.util.HashMap;
+import java.util.HashSet;
+import java.util.Map;
+import java.util.Set;
+import java.util.logging.Level;
+
+public class ConfigHandler {
+    private final Aurus plugin;
+    private FileConfiguration config;
+    private final Map<String, FileConfiguration> menus = new HashMap<>();
+    private final String prefix = "<dark_gray>[<gradient:dark_purple:yellow> Aurus </gradient><dark_gray>] ";
+
+    public ConfigHandler(Aurus plugin) {
+        this.plugin = plugin;
+        loadConfig();
+        loadMenus();
+    }
+
+    public void loadConfig() {
+        try {
+            plugin.saveDefaultConfig();
+            plugin.reloadConfig();
+            this.config = plugin.getConfig();
+            Bukkit.getConsoleSender().sendMessage(ColorUtils.format(prefix + "<dark_gray>[<green>✔<dark_gray>] <green>Main config loaded successfully!"));
+        } catch (Exception e) {
+            Bukkit.getConsoleSender().sendMessage(ColorUtils.format(prefix + "<dark_gray>[<red>✘<dark_gray>] <red>Failed to load config: " + e.getMessage()));
+            this.config = new YamlConfiguration();
+        }
+    }
+
+    public void loadMenus() {
+        menus.clear();
+        File folder = new File(plugin.getDataFolder(), "menus");
+
+        if (!folder.exists()) {
+            folder.mkdirs();
+            try {
+                plugin.saveResource("menus/welcome_server.yml", false);
+                plugin.saveResource("menus/user_profile.yml", false);
+                plugin.saveResource("menus/name_menu.yml", false);
+                plugin.saveResource("menus/animated_menu.yml", false);
+                plugin.saveResource("menus/pixelart.yml", false);
+            } catch (Exception e) {
+                Bukkit.getConsoleSender().sendMessage(ColorUtils.format(prefix + "<dark_gray>[<yellow>!<dark_gray>] <gray>Could not save default menus."));
+            }
+        }
+
+        File[] files = folder.listFiles((dir, name) -> name.endsWith(".yml"));
+        if (files == null) return;
+
+        for (File file : files) {
+            try {
+                String name = file.getName().replace(".yml", "");
+                YamlConfiguration menuConfig = new YamlConfiguration();
+                menuConfig.load(file);
+                menus.put(name, menuConfig);
+                Bukkit.getConsoleSender().sendMessage(ColorUtils.format(prefix + "<dark_gray>[<green>✔<dark_gray>] <gray>Loaded menu: <white>" + name));
+            } catch (Exception e) {
+                Bukkit.getConsoleSender().sendMessage(ColorUtils.format(prefix + "<dark_gray>[<red>✘<dark_gray>] <red>Error loading <yellow>" + file.getName() + "<red>: " + e.getMessage()));
+            }
+        }
+    }
+
+    public ConfigurationSection getMenuSection(String menuId) {
+        if (menuId == null || menuId.isEmpty()) return null;
+
+        for (FileConfiguration menuFile : menus.values()) {
+            if (menuFile.isConfigurationSection(menuId)) {
+                return menuFile.getConfigurationSection(menuId);
+            }
+        }
+
+        if (config != null && config.isConfigurationSection("menus." + menuId)) {
+            return config.getConfigurationSection("menus." + menuId);
+        }
+
+        return null;
+    }
+
+    public Set<String> getMenuKeys() {
+        Set<String> keys = new HashSet<>();
+        for (FileConfiguration menuFile : menus.values()) {
+            keys.addAll(menuFile.getKeys(false));
+        }
+        if (config != null && config.isConfigurationSection("menus")) {
+            keys.addAll(config.getConfigurationSection("menus").getKeys(false));
+        }
+        return keys;
+    }
+
+    public String getGlobalCursor() {
+        return config != null ? config.getString("cursor", "<red><bold>!") : "<red><bold>!";
+    }
+
+    public Location getLocation(String menuId) {
+        ConfigurationSection section = getMenuSection(menuId);
+        if (section == null || !section.isConfigurationSection("location")) return null;
+
+        ConfigurationSection loc = section.getConfigurationSection("location");
+        try {
+            return new Location(
+                    Bukkit.getWorld(loc.getString("world", "world")),
+                    loc.getDouble("x"),
+                    loc.getDouble("y"),
+                    loc.getDouble("z"),
+                    (float) loc.getDouble("yaw"),
+                    (float) loc.getDouble("pitch")
+            );
+        } catch (Exception e) {
+            Bukkit.getConsoleSender().sendMessage(ColorUtils.format(prefix + "<dark_gray>[<red>✘<dark_gray>] <red>Invalid location for menu: " + menuId));
+            return null;
+        }
+    }
+
+    public ConfigurationSection getCursorSection() {
+        return config != null ? config.getConfigurationSection("cursor") : null;
+    }
+
+    public void reload() {
+        loadConfig();
+        loadMenus();
+    }
+}
+
+FILE: ./src/main/java/com/fendrixx/aurus/processors/ActionProcessor.java
+package com.fendrixx.aurus.processors;
+
+import com.fendrixx.aurus.Aurus;
+import net.kyori.adventure.text.minimessage.MiniMessage;
+import org.bukkit.Bukkit;
+import org.bukkit.Sound;
+import org.bukkit.entity.Player;
+
+import java.util.List;
+
+public class ActionProcessor {
+    private final Aurus plugin;
+
+    public ActionProcessor(Aurus plugin) { this.plugin = plugin; }
+
+    public void process(Player player, String action, Runnable closeCallback) {
+        String cmd = action.replace("%player%", player.getName());
+
+        if (cmd.equalsIgnoreCase("[close]")) {
+            if (closeCallback != null) {
+                closeCallback.run();
+            }
+            return;
+        }
+
+        if (cmd.startsWith("[console] ")) {
+            Bukkit.dispatchCommand(Bukkit.getConsoleSender(), cmd.substring(10));
+        } else if (cmd.startsWith("[player] ")) {
+            player.performCommand(cmd.substring(9));
+        } else if (cmd.startsWith("[broadcast] ")) {
+            plugin.adventure().all().sendMessage(MiniMessage.miniMessage().deserialize(cmd.substring(12)));
+        } else if (cmd.startsWith("[message] ")) {
+            plugin.adventure().player(player).sendMessage(MiniMessage.miniMessage().deserialize(cmd.substring(10)));
+        } else if (cmd.startsWith("[openmenu] ")) {
+            String menuId = cmd.substring(11).trim();
+            if (closeCallback != null) closeCallback.run();
+            Bukkit.getScheduler().runTaskLater(plugin, () -> {
+                if (player.isOnline()) plugin.getMenuManager().openMenu(player, menuId);
+            }, 2L);
+        } else if (cmd.startsWith("[sound] ")) {
+            String[] parts = cmd.substring(8).split(", ");
+            try {
+                Sound sound = Sound.valueOf(parts[0].toUpperCase());
+                float vol = parts.length > 1 ? Float.parseFloat(parts[1]) : 1.0f;
+                float pitch = parts.length > 2 ? Float.parseFloat(parts[2]) : 1.0f;
+                player.playSound(player.getLocation(), sound, vol, pitch);
+            } catch (Exception ignored) {}
+        }
+    }
+
+    public void processList(Player player, List<String> actions, Runnable closeCallback) {
+        if (actions == null) return;
+        for (String action : actions) process(player, action, closeCallback);
+    }
+
+    public String parse(Player player, String text) {
+        if (text == null) return "";
+        if (Bukkit.getPluginManager().isPluginEnabled("PlaceholderAPI")) {
+            return me.clip.placeholderapi.PlaceholderAPI.setPlaceholders(player, text);
+        }
+        return text;
+    }
+}
+
+
+FILE: ./src/main/java/com/fendrixx/aurus/processors/InputProcessor.java
+package com.fendrixx.aurus.processors;
+
+import com.fendrixx.aurus.Aurus;
+import com.fendrixx.aurus.util.ColorUtils;
+import org.bukkit.entity.Player;
+import org.bukkit.event.EventHandler;
+import org.bukkit.event.Listener;
+import org.bukkit.event.player.AsyncPlayerChatEvent;
+
+import java.util.HashMap;
+import java.util.Map;
+import java.util.UUID;
+
+public class InputProcessor implements Listener {
+    private final Aurus plugin;
+    private final Map<UUID, String> playersEditing = new HashMap<>();
+    private final Map<String, String> savedValues = new HashMap<>();
+
+    public InputProcessor(Aurus plugin) {
+        this.plugin = plugin;
+    }
+
+    public void startInput(Player player, String variableName) {
+        playersEditing.put(player.getUniqueId(), variableName);
+        player.sendMessage(ColorUtils.format("<dark_gray>[<yellow>!<dark_gray>] <gray>Write in chat the input for " + variableName + "<dark_gray>(or put 'cancel')<gray>."));
+    }
+
+    @EventHandler
+    public void onChat(AsyncPlayerChatEvent event) {
+        Player player = event.getPlayer();
+        UUID uuid = player.getUniqueId();
+
+        if (!playersEditing.containsKey(uuid)) return;
+
+        event.setCancelled(true);
+        String message = event.getMessage();
+        String variableName = playersEditing.get(uuid);
+
+        if (message.equalsIgnoreCase("cancelar")) {
+            player.sendMessage(ColorUtils.format("<dark_gray>[<red>✘<dark_gray>] <red>Canceled"));
+        } else {
+            savedValues.put(variableName, message);
+            player.sendMessage(ColorUtils.format("<dark_gray>[<green>✔<dark_gray>] <gray>Input saved in" + variableName));
+        }
+
+        playersEditing.remove(uuid);
+    }
+
+    public String getValue(String varName) {
+        return savedValues.getOrDefault(varName, "...");
+    }
+}
+
+
+FILE: ./src/main/java/com/fendrixx/aurus/expansion/PAPIExpansion.java
+package com.fendrixx.aurus.expansion;
+
+import com.fendrixx.aurus.processors.InputProcessor;
+import me.clip.placeholderapi.expansion.PlaceholderExpansion;
+import org.bukkit.entity.Player;
+import org.bukkit.plugin.Plugin;
+
+public class PAPIExpansion extends PlaceholderExpansion {
+
+    private final InputProcessor processor;
+
+    public PAPIExpansion(InputProcessor processor, Plugin plugin) {
+        this.processor = processor;
+    }
+
+    @Override
+    public String getIdentifier() {
+        return "Aurus";
+    }
+
+    @Override
+    public String getAuthor() {
+        return "Fendrixx";
+    }
+
+    @Override
+    public String getVersion() {
+        return "1.0.0-BETA";
+    }
+
+    @Override
+    public String onPlaceholderRequest(Player player, String params) {
+        if (params.startsWith("variable_")) {
+            String varName = params.replace("variable_", "");
+
+            return processor.getValue(varName);
+        }
+        return null;
+    }
+}
+
+FILE: ./src/main/java/com/fendrixx/aurus/Aurus.java
+package com.fendrixx.aurus;
+
+import com.fendrixx.aurus.commands.AurusCommand;
+import com.fendrixx.aurus.config.ConfigHandler;
+import com.fendrixx.aurus.expansion.PAPIExpansion;
+import com.fendrixx.aurus.listeners.InteractionListener;
+import com.fendrixx.aurus.listeners.MoveListener;
+import com.fendrixx.aurus.menu.MenuManager;
+import com.fendrixx.aurus.processors.ActionProcessor;
+import com.fendrixx.aurus.processors.InputProcessor;
+import com.fendrixx.aurus.util.ColorUtils;
+import net.kyori.adventure.platform.bukkit.BukkitAudiences;
+import org.bukkit.Bukkit;
+import org.bukkit.entity.Player;
+import org.bukkit.event.EventHandler;
+import org.bukkit.event.Listener;
+import org.bukkit.event.player.PlayerInteractEntityEvent;
+import org.bukkit.plugin.java.JavaPlugin;
+
+public class Aurus extends JavaPlugin implements Listener {
+
+    private MenuManager menuManager;
+    private BukkitAudiences adventure;
+    private ConfigHandler configHandler;
+    private ActionProcessor actionProcessor;
+    private InputProcessor inputProcessor;
+    private PAPIExpansion aurusExpansion;
+
+    @Override
+    public void onLoad() {
+        Bukkit.getConsoleSender().sendMessage(ColorUtils.format("<dark_gray>[<gradient:dark_purple:yellow> Aurus </gradient><dark_gray>] [<yellow>↺<dark_gray>] <yellow>Plugin loading..."));
+    }
+
+    @Override
+    public void onEnable() {
+        this.adventure = BukkitAudiences.create(this);
+
+        this.configHandler = new ConfigHandler(this);
+        this.menuManager = new MenuManager(this);
+        this.inputProcessor = new InputProcessor(this);
+
+        if (Bukkit.getPluginManager().getPlugin("PlaceholderAPI") != null) {
+            new PAPIExpansion(this.inputProcessor, this).register();
+        }
+
+        registerCommands();
+
+        InteractionListener interactionListener = new InteractionListener(this);
+        getServer().getPluginManager().registerEvents(interactionListener, this);
+        getServer().getPluginManager().registerEvents(new MoveListener(this), this);
+        getServer().getPluginManager().registerEvents(this.inputProcessor, this);
+        getServer().getPluginManager().registerEvents(this, this);
+
+        this.interactionListener = interactionListener;
+
+        sendStartupMessage();
+    }
+
+    private InteractionListener interactionListener;
+
+    @EventHandler
+    public void onInteractEntity(PlayerInteractEntityEvent event) {
+        Player player = event.getPlayer();
+        if (menuManager.getActiveMenu(player.getUniqueId()) != null) {
+            event.setCancelled(true);
+            interactionListener.handle3DClick(player);
+        }
+    }
+
+    @Override
+    public void onDisable() {
+        Bukkit.getConsoleSender().sendMessage(ColorUtils.format("<dark_gray>[<gradient:dark_purple:yellow> Aurus </gradient><dark_gray>] [<yellow>↺<dark_gray>] <yellow>Disabling menus..."));
+        if (this.menuManager != null) {
+            this.menuManager.closeAll();
+        }
+
+        Bukkit.getConsoleSender().sendMessage(ColorUtils.format("<dark_gray>[<gradient:dark_purple:yellow> Aurus </gradient><dark_gray>] [<yellow>↺<dark_gray>] <yellow>Disabling adventure..."));
+        if (this.adventure != null) {
+            this.adventure.close();
+        }
+
+        Bukkit.getConsoleSender().sendMessage(ColorUtils.format("<dark_gray>[<gradient:dark_purple:yellow> Aurus </gradient><dark_gray>] [<green>✔<dark_gray>] <green>Plugin disabled!"));
+    }
+
+    private void registerCommands() {
+        if (getCommand("aurus") != null) {
+            AurusCommand cmd = new AurusCommand(this);
+            getCommand("aurus").setExecutor(cmd);
+            getCommand("aurus").setTabCompleter(cmd);
+        }
+    }
+
+    private void sendStartupMessage() {
+        Bukkit.getConsoleSender().sendMessage(ColorUtils.format("<dark_gray>[<gradient:dark_purple:yellow> Aurus </gradient><dark_gray>] [<green>✔<dark_gray>] <green>Plugin enabled!"));
+        Bukkit.getConsoleSender().sendMessage(ColorUtils.format("<dark_gray>[<gradient:dark_purple:yellow> Aurus </gradient><dark_gray>] [<yellow>!<dark_gray>] <gold>ty for using my plugin! <dark_gray>~ Fendrixx"));
+        Bukkit.getConsoleSender().sendMessage(ColorUtils.format("""
+                \s
+                <gradient:dark_purple:yellow>| ░█▀▀█⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀</gradient>
+                <gradient:dark_purple:yellow>| ░█▄▄█░█ ░█ █▀▀█░█ ░█░██▀▀</gradient>
+                <gradient:dark_purple:yellow>| ░█ ░█░█▄▄█ █▀█▄░█▄▄█ ▄▄█▀</gradient>
+                <dark_purple>|<gradient:dark_gray:white> - Aurus 1.0.0-BETA by Fendrixx
+                \s
+                """));
+    }
+
+    public BukkitAudiences adventure() { return this.adventure; }
+    public MenuManager getMenuManager() { return this.menuManager; }
+    public ConfigHandler getConfigHandler() { return this.configHandler; }
+    public ActionProcessor getActionProcessor() {return this.actionProcessor; }
+    public InputProcessor getInputProcessor() {return this.inputProcessor; }
+}
+
+
+FILE: ./src/main/resources/plugin.yml
+name: Aurus
+version: 1.0.0-BETA
+main: com.fendrixx.aurus.Aurus
+api-version: '1.20'
+authors: [fendrixx]
+commands:
+  aurus:
+    description: main aurus command
+    aliases: [au]
+permissions:
+  aurus.admin:
+    description: admin permission for aurus
+    default: op
+
+FILE: ./src/main/resources/config.yml
+cursor:
+  type: "TEXT" # ITEM, TEXT, BLOCK
+  value: "<white><bold>·" # Material or text
+  size: 1.0
+  rotation:
+    x: 0
+    y: 0
+    z: 0
+
+FILE: ./src/main/resources/menus/welcome_server.yml
+welcome_server:
+  components:
+    title:
+      # Types: TEXT, BUTTON, ITEM, BLOCK
+      type: "TEXT"
+      # Text only works for TEXTs and BUTTONs
+      text: "<yellow>¡Welcome to <gradient:red:dark_red>MyServer.com</gradient><yellow>!"
+      background: false
+      x: 0.0
+      y: 2.7
+      size: 3.8
+    play:
+      type: "BUTTON"
+      text: "Play"
+      x: -3.0
+      y: 0.3
+      size: 2.0
+      actions:
+        # available actions in the documentation
+        - '[close]'
+      rotation:
+        x: 0
+        y: 45
+        z: 0
+    options:
+      type: "BUTTON"
+      text: "Options"
+      x: -3.0
+      y: -0.3
+      size: 1.0
+      actions:
+        - '[openmenu] name_menu'
+      rotation:
+        x: 0
+        y: 35
+        z: 0
+    quit:
+      type: "BUTTON"
+      text: "<red>Quit"
+      x: -3.0
+      y: -0.8
+      size: 1.0
+      actions:
+        - '[close]'
+      rotation:
+        x: 0
+        y: 35
+        z: 0
+    announce:
+      type: "TEXT"
+      text: "<yellow>ANNOUNCE"
+      background: false
+      x: 3.0
+      y: 0.0
+      size: 1.5
+      rotation:
+        x: 0
+        y: -35
+        z: 0
+    cosmetic:
+      type: "TEXT"
+      text: "!New <gradient:blue:dark_blue>Cat</gradient> Cosmetic!"
+      background: false
+      x: 3.0
+      y: -0.4
+      size: 1.0
+      rotation:
+        x: 0
+        y: -35
+        z: 0
+
+
+FILE: ./src/main/resources/menus/user_profile.yml
+user_profile:
+  update-in-ticks: 20
+  components:
+    head:
+      type: "TEXT"
+      # PlaceHolderApi support
+      text: "<yellow>%player_name%</yellow>"
+      x: 0.0
+      y: 1.0
+      size: 2.0
+    stats:
+      type: "TEXT"
+      text: "<gray>Ping: <green>%player_ping%ms<newline><gray>Health: <red>%player_health%"
+      x: 0.0
+      y: 0.0
+      size: 1.0
+    close_btn:
+      type: "BUTTON"
+      text: "<red>[ Close ]"
+      x: 0.0
+      y: -1.0
+      size: 0.8
+      actions:
+        - "[close]"
+
+FILE: ./src/main/resources/menus/animated_menu.yml
+animated_menu:
+  components:
+    logo:
+      type: "ITEM"
+      # Material only works for ITEMs and BLOCKs
+      material: "NETHER_STAR"
+      x: 0.0
+      y: 1.0
+      size: 1.0
+      animations:
+        # You can make animations with math formulas
+        x-formula: "cos(t) * 0.5"
+        y-formula: "sin(t) * 0.5"
+        rotation-formula: "sin(t) * 20"
+    animations:
+      type: "TEXT"
+      text: "<yellow>¡Animations!"
+      x: 0.0
+      y: 0.0
+      size: 2.0
+      animations:
+        scale-formula: "1 + (abs(sin(t * 2)) * 0.2)"
+
+
+    button_close:
+      type: "BUTTON"
+      x: 0
+      y: -0.8
+      size: 0.8
+      text: "<red>Close menu"
+      actions:
+        - "[close]"
+
+FILE: ./src/main/resources/menus/name_menu.yml
+name_menu:
+  update-in-ticks: 10
+  components:
+    display_name:
+      type: "TEXT"
+      x: 0
+      y: 0.5
+      size: 1.2
+      text: "<gray>Your name is <yellow>%aurus_variable_player_name%"
+
+    button_edit:
+      # Input can save input (in chat) to a placeholderapi variable (%aurus_variable_<variable_name>)
+      type: "INPUT"
+      x: 0
+      y: 0
+      size: 1.0
+      text: "<green>[ Click to edit name ]"
+      variable_name: "player_name"
+
+    button_close:
+      type: "BUTTON"
+      x: 0
+      y: -0.5
+      size: 0.8
+      text: "<red>Close menu"
+      actions:
+        - "[close]"
+
+FILE: ./src/main/resources/menus/pixelart.yml
+pixelart:
+  components:
+    pixel_art:
+      type: "TEXT"
+      text: "<bold><gradient:red:yellow>                /           / <newline>                /' .,,,,  ./ <newline>                /';'     ,/ <newline>               / /  ,,//,`'` <newline>              ( ,, '_,  ,,,' `` <newline>              |     /@  ,,, ;\" ` <newline>             /    .   ,''/' `,`` <newline>            /   .      ./, `,, ` ; <newline>         ,./  .   ,-,',` ,,/''\\,' <newline>        |   /; ./,,'`,,'' |   | <newline>        |     /   ','     /   | <newline>         \\___/'   '      |     | <newline>           `,,'  |       /     `\\ <newline>                /       |        ~\\ <newline>               '        ( <newline>              : <newline>             ; .         \\-- <newline>           :   \\         ;</gradient>"
+      background: false
+      x: 0.0
+      y: -1.0
+      size: 1.0
+    credits:
+      type: "BUTTON"
+      text: "Click here for art credits"
+      x: 0.0
+      y: -2.0
+      size: 0.6
+      actions:
+        - "[message] <gray>Art by Ooyamaneko: <aqua><click:open_url:'https://www.asciiart.eu/art/c4a5475ba0277bac'>[Click Here to go to the original art]</click>"
+
+FILE: ./target/classes/plugin.yml
+name: Aurus
+version: 1.0.0-BETA
+main: com.fendrixx.aurus.Aurus
+api-version: '1.20'
+authors: [fendrixx]
+commands:
+  aurus:
+    description: main aurus command
+    aliases: [au]
+permissions:
+  aurus.admin:
+    description: admin permission for aurus
+    default: op
+
+FILE: ./target/classes/config.yml
+cursor:
+  type: "TEXT" # ITEM, TEXT, BLOCK
+  value: "<white><bold>·" # Material or text
+  size: 1.0
+  rotation:
+    x: 0
+    y: 0
+    z: 0
+
+FILE: ./target/classes/menus/welcome_server.yml
+welcome_server:
+  components:
+    title:
+      # Types: TEXT, BUTTON, ITEM, BLOCK
+      type: "TEXT"
+      # Text only works for TEXTs and BUTTONs
+      text: "<yellow>¡Welcome to <gradient:red:dark_red>MyServer.com</gradient><yellow>!"
+      background: false
+      x: 0.0
+      y: 2.7
+      size: 3.8
+    play:
+      type: "BUTTON"
+      text: "Play"
+      x: -3.0
+      y: 0.3
+      size: 2.0
+      actions:
+        # available actions in the documentation
+        - '[close]'
+      rotation:
+        x: 0
+        y: 45
+        z: 0
+    options:
+      type: "BUTTON"
+      text: "Options"
+      x: -3.0
+      y: -0.3
+      size: 1.0
+      actions:
+        - '[openmenu] name_menu'
+      rotation:
+        x: 0
+        y: 35
+        z: 0
+    quit:
+      type: "BUTTON"
+      text: "<red>Quit"
+      x: -3.0
+      y: -0.8
+      size: 1.0
+      actions:
+        - '[close]'
+      rotation:
+        x: 0
+        y: 35
+        z: 0
+    announce:
+      type: "TEXT"
+      text: "<yellow>ANNOUNCE"
+      background: false
+      x: 3.0
+      y: 0.0
+      size: 1.5
+      rotation:
+        x: 0
+        y: -35
+        z: 0
+    cosmetic:
+      type: "TEXT"
+      text: "!New <gradient:blue:dark_blue>Cat</gradient> Cosmetic!"
+      background: false
+      x: 3.0
+      y: -0.4
+      size: 1.0
+      rotation:
+        x: 0
+        y: -35
+        z: 0
+
+
+FILE: ./target/classes/menus/user_profile.yml
+user_profile:
+  update-in-ticks: 20
+  components:
+    head:
+      type: "TEXT"
+      # PlaceHolderApi support
+      text: "<yellow>%player_name%</yellow>"
+      x: 0.0
+      y: 1.0
+      size: 2.0
+    stats:
+      type: "TEXT"
+      text: "<gray>Ping: <green>%player_ping%ms<newline><gray>Health: <red>%player_health%"
+      x: 0.0
+      y: 0.0
+      size: 1.0
+    close_btn:
+      type: "BUTTON"
+      text: "<red>[ Close ]"
+      x: 0.0
+      y: -1.0
+      size: 0.8
+      actions:
+        - "[close]"
+
+FILE: ./target/classes/menus/animated_menu.yml
+animated_menu:
+  components:
+    logo:
+      type: "ITEM"
+      # Material only works for ITEMs and BLOCKs
+      material: "NETHER_STAR"
+      x: 0.0
+      y: 1.0
+      size: 1.0
+      animations:
+        # You can make animations with math formulas
+        x-formula: "cos(t) * 0.5"
+        y-formula: "sin(t) * 0.5"
+        rotation-formula: "sin(t) * 20"
+    animations:
+      type: "TEXT"
+      text: "<yellow>¡Animations!"
+      x: 0.0
+      y: 0.0
+      size: 2.0
+      animations:
+        scale-formula: "1 + (abs(sin(t * 2)) * 0.2)"
+
+
+    button_close:
+      type: "BUTTON"
+      x: 0
+      y: -0.8
+      size: 0.8
+      text: "<red>Close menu"
+      actions:
+        - "[close]"
+
+FILE: ./target/classes/menus/name_menu.yml
+name_menu:
+  update-in-ticks: 10
+  components:
+    display_name:
+      type: "TEXT"
+      x: 0
+      y: 0.5
+      size: 1.2
+      text: "<gray>Your name is <yellow>%aurus_variable_player_name%"
+
+    button_edit:
+      # Input can save input (in chat) to a placeholderapi variable (%aurus_variable_<variable_name>)
+      type: "INPUT"
+      x: 0
+      y: 0
+      size: 1.0
+      text: "<green>[ Click to edit name ]"
+      variable_name: "player_name"
+
+    button_close:
+      type: "BUTTON"
+      x: 0
+      y: -0.5
+      size: 0.8
+      text: "<red>Close menu"
+      actions:
+        - "[close]"
+
+FILE: ./target/classes/menus/pixelart.yml
+pixelart:
+  components:
+    pixel_art:
+      type: "TEXT"
+      text: "<bold><gradient:red:yellow>                /           / <newline>                /' .,,,,  ./ <newline>                /';'     ,/ <newline>               / /  ,,//,`'` <newline>              ( ,, '_,  ,,,' `` <newline>              |     /@  ,,, ;\" ` <newline>             /    .   ,''/' `,`` <newline>            /   .      ./, `,, ` ; <newline>         ,./  .   ,-,',` ,,/''\\,' <newline>        |   /; ./,,'`,,'' |   | <newline>        |     /   ','     /   | <newline>         \\___/'   '      |     | <newline>           `,,'  |       /     `\\ <newline>                /       |        ~\\ <newline>               '        ( <newline>              : <newline>             ; .         \\-- <newline>           :   \\         ;</gradient>"
+      background: false
+      x: 0.0
+      y: -1.0
+      size: 1.0
+    credits:
+      type: "BUTTON"
+      text: "Click here for art credits"
+      x: 0.0
+      y: -2.0
+      size: 0.6
+      actions:
+        - "[message] <gray>Art by Ooyamaneko: <aqua><click:open_url:'https://www.asciiart.eu/art/c4a5475ba0277bac'>[Click Here to go to the original art]</click>"
+

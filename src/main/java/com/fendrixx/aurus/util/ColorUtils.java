@@ -21,22 +21,12 @@ public class ColorUtils {
 
     @NotNull
     public static String format(@NotNull String message) {
-        if (message.isEmpty()) return message;
+        if (message.isEmpty())
+            return message;
 
         Component component = MINI_MESSAGE.deserialize(message)
                 .decoration(TextDecoration.ITALIC, TextDecoration.State.FALSE);
 
         return SERIALIZER.serialize(component);
-    }
-
-    public static List<String> formatList(List<String> list) {
-        if (list == null) return List.of();
-        return list.stream().map(ColorUtils::format).collect(Collectors.toList());
-    }
-
-    @NotNull
-    public static Component parse(@NotNull String message) {
-        return MINI_MESSAGE.deserialize(message)
-                .decoration(TextDecoration.ITALIC, TextDecoration.State.FALSE);
     }
 }
