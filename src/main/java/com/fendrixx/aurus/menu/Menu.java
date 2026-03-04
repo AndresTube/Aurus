@@ -9,6 +9,8 @@ import org.bukkit.Color;
 import org.bukkit.Location;
 import org.bukkit.configuration.ConfigurationSection;
 import org.bukkit.entity.*;
+import org.bukkit.potion.PotionEffect;
+import org.bukkit.potion.PotionEffectType;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -58,25 +60,30 @@ public class Menu {
         if (comps != null) {
             for (String key : comps.getKeys(false)) {
                 ConfigurationSection c = comps.getConfigurationSection(key);
-                Location loc = calculateComponentLocation(c.getDouble("x"), c.getDouble("y"));
+                double bx = c.getDouble("x");
+                double by = c.getDouble("y");
+                Location loc = calculateComponentLocation(bx, by);
                 MenuButton btn = renderer.createComponent(player, c.getString("type", "BUTTON").toUpperCase(), c, loc,
-                        this::close);
+                        bx, by, this::close);
                 if (btn != null) {
                     buttons.add(btn);
                     for (Player otherPlayer : Bukkit.getOnlinePlayers()) {
                         if (!otherPlayer.equals(player)) {
                             otherPlayer.hideEntity(plugin, btn.getDisplay());
+                            otherPlayer.hideEntity(plugin, player);
                         }
                     }
                 }
             }
         }
 
+        player.hideEntity(plugin, player);
+        player.addPotionEffect(
+                new PotionEffect(PotionEffectType.INVISIBILITY, Integer.MAX_VALUE, 0, false, false, false));
+
         int delay = section.getInt("update-in-ticks", 20);
         this.animator = new MenuAnimator(this, player, buttons, menuDistance, delay);
         this.animator.runTaskTimer(plugin, 0L, 1L);
-
-        player.hideEntity(plugin, player);
     }
 
     private void spawnCursor() {
@@ -121,7 +128,14 @@ public class Menu {
         buttons.forEach(b -> b.getDisplay().remove());
         buttons.clear();
         plugin.getMenuManager().removeMenu(player.getUniqueId());
+
         player.showEntity(plugin, player);
+        player.removePotionEffect(PotionEffectType.INVISIBILITY);
+        for (Player otherPlayer : Bukkit.getOnlinePlayers()) {
+            if (!otherPlayer.equals(player)) {
+                otherPlayer.showEntity(plugin, player);
+            }
+        }
     }
 
     public void updateVisuals() {
@@ -152,5 +166,9 @@ public class Menu {
 
     public float getSpawnPitch() {
         return spawnPitch;
+    }
+
+    public double getMenuDistance() {
+        return menuDistance;
     }
 }

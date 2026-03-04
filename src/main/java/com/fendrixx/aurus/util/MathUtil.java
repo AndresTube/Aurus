@@ -12,13 +12,13 @@ public class MathUtil {
         Vector forward = new Vector(
                 -Math.sin(y) * Math.cos(p),
                 -Math.sin(p),
-                Math.cos(y) * Math.cos(p));
+                Math.cos(y) * Math.cos(p)).normalize();
 
         Vector worldUp = new Vector(0, 1, 0);
-        Vector right = worldUp.clone().crossProduct(forward).normalize();
-        Vector up = forward.clone().crossProduct(right).normalize();
+        Vector right = forward.clone().crossProduct(worldUp).normalize();
+        Vector up = right.clone().crossProduct(forward).normalize();
 
-        return new Vector[] { forward.normalize(), right, up };
+        return new Vector[] { forward, right, up };
     }
 
     public static Location getMenuOrigin(Location eyeLoc, float yaw, float pitch, double distance) {

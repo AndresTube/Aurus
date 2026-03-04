@@ -41,27 +41,18 @@ public class MenuManager {
     }
 
     public void closeAll() {
-        activeMenus.values().forEach(Menu::close);
+        for (Menu menu : new java.util.ArrayList<>(activeMenus.values())) {
+            menu.close();
+        }
         activeMenus.clear();
-    }
-
-    public void startUpdateTask() {
-        new BukkitRunnable() {
-            @Override
-            public void run() {
-                for (Menu menu : activeMenus.values()) {
-                    menu.updateVisuals();
-                }
-            }
-        }.runTaskTimer(plugin, 0L, 5L);
     }
 }
 
 FILE: ./src/main/java/com/fendrixx/aurus/menu/MenuButton.java
 package com.fendrixx.aurus.menu;
 
+import com.fendrixx.aurus.processors.ActionProcessor;
 import com.fendrixx.aurus.util.ColorUtils;
-import me.clip.placeholderapi.PlaceholderAPI;
 import org.bukkit.configuration.ConfigurationSection;
 import org.bukkit.entity.Display;
 import org.bukkit.entity.Player;
@@ -74,147 +65,57 @@ public class MenuButton {
     private final String type;
     private final String variableName;
     private final ConfigurationSection config;
+    private final ActionProcessor actionProcessor;
+    private final double baseX;
+    private final double baseY;
 
-    public MenuButton(Display display, String rawText, Runnable onClick, String type, String variableName, ConfigurationSection config) {
+    public MenuButton(Display display, String rawText, Runnable onClick, String type, String variableName,
+            ConfigurationSection config, ActionProcessor actionProcessor, double baseX, double baseY) {
         this.display = display;
         this.rawText = rawText;
         this.onClick = onClick;
         this.type = type;
         this.variableName = variableName;
         this.config = config;
+        this.actionProcessor = actionProcessor;
+        this.baseX = baseX;
+        this.baseY = baseY;
     }
 
     public void updateText(Player player) {
         if (display instanceof TextDisplay td && rawText != null) {
-            String parsed = PlaceholderAPI.setPlaceholders(player, rawText);
-            td.setText(ColorUtils.format(parsed));
+            td.setText(ColorUtils.format(actionProcessor.parse(player, rawText)));
         }
     }
 
-    public Display getDisplay() { return display; }
-    public String getType() { return type; }
-    public String getVariableName() { return variableName; }
-    public ConfigurationSection getConfig() { return config; }
-    public void onClick() { if (onClick != null) onClick.run(); }
-}
-
-FILE: ./src/main/java/com/fendrixx/aurus/menu/Menu.java
-package com.fendrixx.aurus.menu;
-
-import com.fendrixx.aurus.Aurus;
-import com.fendrixx.aurus.processors.ActionProcessor;
-import com.fendrixx.aurus.util.ColorUtils;
-import com.fendrixx.aurus.util.MathUtil;
-import org.bukkit.Color;
-import org.bukkit.Location;
-import org.bukkit.configuration.ConfigurationSection;
-import org.bukkit.entity.*;
-import org.bukkit.util.Vector;
-
-import java.util.ArrayList;
-import java.util.List;
-
-public class Menu {
-    private final Aurus plugin;
-    private final Player player;
-    private final MenuCamera camera;
-    private final MenuRenderer renderer;
-    private final List<MenuButton> buttons = new ArrayList<>();
-
-    private Display cursorEntity;
-    private MenuAnimator animator;
-    private Location oldLocation;
-    private double menuDistance;
-
-    public Menu(Aurus plugin, Player player) {
-        this.plugin = plugin;
-        this.player = player;
-        this.camera = new MenuCamera(player);
-        this.renderer = new MenuRenderer(new ActionProcessor(plugin));
+    public Display getDisplay() {
+        return display;
     }
 
-    public void open(String menuId) {
-        ConfigurationSection section = plugin.getConfigHandler().getMenuSection(menuId);
-        if (section == null) return;
-
-        this.oldLocation = player.getLocation().clone();
-
-        this.menuDistance = section.getDouble("distance", 2.5);
-
-        Location savedLocation = player.getLocation().clone();
-        savedLocation.setPitch(0);
-
-        camera.spawn();
-        player.teleport(savedLocation);
-
-        spawnCursor();
-
-        ConfigurationSection comps = section.getConfigurationSection("components");
-        if (comps != null) {
-            for (String key : comps.getKeys(false)) {
-                ConfigurationSection c = comps.getConfigurationSection(key);
-                Location loc = calculateComponentLocation(c.getDouble("x"), c.getDouble("y"));
-                MenuButton btn = renderer.createComponent(player, c.getString("type", "BUTTON").toUpperCase(), c, loc, this::close);
-                if (btn != null) buttons.add(btn);
-            }
-        }
-
-        int delay = section.getInt("update-in-ticks", 20);
-        this.animator = new MenuAnimator(this, player, buttons, menuDistance, delay);
-        this.animator.runTaskTimer(plugin, 0L, 1L);
-
-        player.hideEntity(plugin, player);
+    public String getType() {
+        return type;
     }
 
-    private void spawnCursor() {
-        ConfigurationSection c = plugin.getConfigHandler().getCursorSection();
-        Location loc = player.getEyeLocation().add(player.getLocation().getDirection().multiply(menuDistance));
-        TextDisplay td = (TextDisplay) player.getWorld().spawnEntity(loc, EntityType.TEXT_DISPLAY);
-        td.setBillboard(org.bukkit.entity.Display.Billboard.FIXED);
-        td.setText(ColorUtils.format(c != null ? c.getString("value", "!") : "!"));
-        td.setBackgroundColor(Color.fromARGB(0, 0, 0, 0));
-        renderer.setupDisplay(td, (float) (c != null ? c.getDouble("size", 1.5) : 1.5), c);
-        this.cursorEntity = td;
+    public String getVariableName() {
+        return variableName;
     }
 
-    public Location calculateComponentLocation(double x, double y) {
-        Location origin = player.getEyeLocation().clone().add(0, -0.4, 0);
-
-        Vector direction = player.getEyeLocation().getDirection().normalize();
-
-        Vector right = new Vector(-direction.getZ(), 0, direction.getX()).normalize();
-        Vector up = direction.clone().crossProduct(right).multiply(-1).normalize();
-
-        Location center = origin.add(direction.multiply(2));
-        center.add(right.multiply(x));
-        center.add(up.multiply(y));
-
-        center.setYaw(player.getLocation().getYaw() + 180f);
-        center.setPitch(-player.getLocation().getPitch());
-
-        return center;
+    public ConfigurationSection getConfig() {
+        return config;
     }
 
-    public void close() {
-        if (oldLocation != null && player.isOnline()) player.teleport(oldLocation);
-        if (animator != null) animator.cancel();
-        camera.remove();
-        if (cursorEntity != null) cursorEntity.remove();
-        buttons.forEach(b -> b.getDisplay().remove());
-        buttons.clear();
-        plugin.getMenuManager().removeMenu(player.getUniqueId());
-        player.showEntity(plugin, player);
+    public double getBaseX() {
+        return baseX;
     }
 
-    public void updateVisuals() {
-        for (MenuButton btn : buttons) {
-            btn.updateText(player);
-        }
+    public double getBaseY() {
+        return baseY;
     }
 
-    public MenuCamera getCamera() { return camera; }
-    public Display getCursor() { return cursorEntity; }
-    public List<MenuButton> getButtons() { return buttons; }
+    public void onClick() {
+        if (onClick != null)
+            onClick.run();
+    }
 }
 
 FILE: ./src/main/java/com/fendrixx/aurus/menu/MenuRenderer.java
@@ -224,7 +125,6 @@ import com.fendrixx.aurus.processors.ActionProcessor;
 import com.fendrixx.aurus.util.ColorUtils;
 import org.bukkit.Color;
 import org.bukkit.Location;
-import org.bukkit.Material;
 import org.bukkit.configuration.ConfigurationSection;
 import org.bukkit.entity.*;
 import org.bukkit.inventory.ItemStack;
@@ -238,34 +138,45 @@ public class MenuRenderer {
         this.actionProcessor = actionProcessor;
     }
 
-    public MenuButton createComponent(Player player, String type, ConfigurationSection conf, Location loc, Runnable closeAction) {
+    public ActionProcessor getActionProcessor() {
+        return actionProcessor;
+    }
+
+    public MenuButton createComponent(Player player, String type, ConfigurationSection conf, Location loc,
+            double baseX, double baseY, Runnable closeAction) {
         float size = (float) conf.getDouble("size", 1.0);
         String rawText = conf.getString("text", "");
 
         return switch (type) {
             case "TEXT" -> {
                 TextDisplay td = spawnTextDisplay(loc, player, rawText, conf, size);
-                yield new MenuButton(td, rawText, null, "TEXT", null, conf);
+                yield new MenuButton(td, rawText, null, "TEXT", null, conf, actionProcessor, baseX, baseY);
             }
             case "BUTTON" -> {
                 TextDisplay td = spawnTextDisplay(loc, player, rawText, conf, size);
-                yield new MenuButton(td, rawText, () -> actionProcessor.processList(player, conf.getStringList("actions"), closeAction), "BUTTON", null, conf);
+                yield new MenuButton(td, rawText,
+                        () -> actionProcessor.processList(player, conf.getStringList("actions"), closeAction),
+                        "BUTTON", null, conf, actionProcessor, baseX, baseY);
             }
             case "INPUT" -> {
                 TextDisplay td = spawnTextDisplay(loc, player, rawText, conf, size);
-                yield new MenuButton(td, rawText, () -> actionProcessor.processList(player, conf.getStringList("actions"), closeAction), "INPUT", conf.getString("variable_name"), conf);
+                yield new MenuButton(td, rawText,
+                        () -> actionProcessor.processList(player, conf.getStringList("actions"), closeAction),
+                        "INPUT", conf.getString("variable_name"), conf, actionProcessor, baseX, baseY);
             }
             case "ITEM" -> {
-                ItemDisplay id = (ItemDisplay) loc.getWorld().spawnEntity(loc, EntityType.ITEM_DISPLAY);
-                id.setItemStack(new ItemStack(Material.matchMaterial(conf.getString("material", "STONE"))));
-                setupDisplay(id, size, conf);
-                yield new MenuButton(id, null, null, "ITEM", null, conf);
+                ItemDisplay idisp = (ItemDisplay) loc.getWorld().spawnEntity(loc, EntityType.ITEM_DISPLAY);
+                String mat = actionProcessor.parse(player, conf.getString("material", "STONE"));
+                idisp.setItemStack(new ItemStack(org.bukkit.Material.matchMaterial(mat)));
+                setupDisplay(idisp, size, conf);
+                yield new MenuButton(idisp, null, null, "ITEM", null, conf, actionProcessor, baseX, baseY);
             }
             case "BLOCK" -> {
                 BlockDisplay bd = (BlockDisplay) loc.getWorld().spawnEntity(loc, EntityType.BLOCK_DISPLAY);
-                bd.setBlock(Material.matchMaterial(conf.getString("material", "STONE")).createBlockData());
+                String mat = actionProcessor.parse(player, conf.getString("material", "STONE"));
+                bd.setBlock(org.bukkit.Material.matchMaterial(mat).createBlockData());
                 setupDisplay(bd, size, conf);
-                yield new MenuButton(bd, null, null, "BLOCK", null, conf);
+                yield new MenuButton(bd, null, null, "BLOCK", null, conf, actionProcessor, baseX, baseY);
             }
             default -> null;
         };
@@ -275,7 +186,8 @@ public class MenuRenderer {
         TextDisplay td = (TextDisplay) loc.getWorld().spawnEntity(loc, EntityType.TEXT_DISPLAY);
         td.setBillboard(Display.Billboard.FIXED);
         td.setText(ColorUtils.format(actionProcessor.parse(p, raw)));
-        if (!conf.getBoolean("background", true)) td.setBackgroundColor(Color.fromARGB(0, 0, 0, 0));
+        if (!conf.getBoolean("background", true))
+            td.setBackgroundColor(Color.fromARGB(0, 0, 0, 0));
         setupDisplay(td, size, conf);
         return td;
     }
@@ -287,8 +199,7 @@ public class MenuRenderer {
             trans.getLeftRotation().rotationXYZ(
                     (float) Math.toRadians(conf.getDouble("rotation.x")),
                     (float) Math.toRadians(conf.getDouble("rotation.y")),
-                    (float) Math.toRadians(conf.getDouble("rotation.z"))
-            );
+                    (float) Math.toRadians(conf.getDouble("rotation.z")));
         }
         display.setTransformation(trans);
     }
@@ -336,7 +247,8 @@ public class MenuAnimator extends BukkitRunnable {
         for (MenuButton btn : buttons) {
             ConfigurationSection conf = btn.getConfig();
             ConfigurationSection anim = conf.getConfigurationSection("animations");
-            if (anim == null) continue;
+            if (anim == null)
+                continue;
 
             Display display = btn.getDisplay();
             Transformation trans = display.getTransformation();
@@ -354,6 +266,16 @@ public class MenuAnimator extends BukkitRunnable {
                 changed = true;
             }
 
+            if (anim.contains("x-formula") || anim.contains("y-formula")) {
+                double rx = anim.contains("x-formula") ? MathUtil.evaluate(anim.getString("x-formula"), ticks) : 0;
+                double ry = anim.contains("y-formula") ? MathUtil.evaluate(anim.getString("y-formula"), ticks) : 0;
+                double baseX = conf.getDouble("x", 0.0);
+                double baseY = conf.getDouble("y", 0.0);
+
+                Location offsetLoc = menu.calculateComponentLocation(baseX + rx, baseY + ry);
+                display.teleport(offsetLoc);
+            }
+
             if (changed) {
                 display.setInterpolationDuration(1);
                 display.setInterpolationDelay(0);
@@ -361,10 +283,14 @@ public class MenuAnimator extends BukkitRunnable {
             }
         }
 
-
-        Location newPos = MathUtil.getCursorLocation(menu.getCamera().getEyeLocation(), menu.getCamera().getLocation().getYaw(),
-                player.getLocation().getYaw(), player.getLocation().getPitch(), distance);
-        menu.getCursor().teleport(newPos);
+        Location newCursorPos = MathUtil.getCursorLocation(
+                menu.getMenuOrigin(),
+                menu.getSpawnYaw(),
+                menu.getSpawnPitch(),
+                player.getLocation().getYaw(),
+                player.getLocation().getPitch(),
+                distance);
+        menu.getCursor().teleport(newCursorPos);
 
         updateCounter++;
         if (updateCounter >= updateDelay) {
@@ -377,7 +303,9 @@ public class MenuAnimator extends BukkitRunnable {
 FILE: ./src/main/java/com/fendrixx/aurus/menu/MenuCamera.java
 package com.fendrixx.aurus.menu;
 
-import com.fendrixx.aurus.util.NMSUtil;
+import com.github.retrooper.packetevents.PacketEvents;
+import com.github.retrooper.packetevents.wrapper.play.server.WrapperPlayServerCamera;
+import com.github.retrooper.packetevents.wrapper.play.server.WrapperPlayServerSetPassengers;
 import org.bukkit.Location;
 import org.bukkit.entity.EntityType;
 import org.bukkit.entity.Pig;
@@ -402,12 +330,14 @@ public class MenuCamera {
         tripod.setInvulnerable(true);
         tripod.setCollidable(false);
 
-        tripod.addPassenger(player);
-        NMSUtil.sendCameraPacket(player, tripod);
+        PacketEvents.getAPI().getPlayerManager().sendPacket(player, new WrapperPlayServerCamera(tripod.getEntityId()));
+
+        PacketEvents.getAPI().getPlayerManager().sendPacket(player,
+                new WrapperPlayServerSetPassengers(tripod.getEntityId(), new int[] { player.getEntityId() }));
     }
 
     public void remove() {
-        NMSUtil.sendCameraPacket(player, player);
+        PacketEvents.getAPI().getPlayerManager().sendPacket(player, new WrapperPlayServerCamera(player.getEntityId()));
 
         if (tripod != null) {
             tripod.remove();
@@ -419,11 +349,188 @@ public class MenuCamera {
     }
 
     public Location getEyeLocation() {
-        return getLocation().clone().add(0, 1.5, 0);
+        return getLocation().clone().add(0, 0.6, 0);
     }
 
     public Pig getTripod() {
         return tripod;
+    }
+}
+
+
+FILE: ./src/main/java/com/fendrixx/aurus/menu/Menu.java
+package com.fendrixx.aurus.menu;
+
+import com.fendrixx.aurus.Aurus;
+import com.fendrixx.aurus.processors.ActionProcessor;
+import com.fendrixx.aurus.util.ColorUtils;
+import com.fendrixx.aurus.util.MathUtil;
+import org.bukkit.Bukkit;
+import org.bukkit.Color;
+import org.bukkit.Location;
+import org.bukkit.configuration.ConfigurationSection;
+import org.bukkit.entity.*;
+import org.bukkit.potion.PotionEffect;
+import org.bukkit.potion.PotionEffectType;
+
+import java.util.ArrayList;
+import java.util.List;
+
+public class Menu {
+    private final Aurus plugin;
+    private final Player player;
+    private final MenuCamera camera;
+    private final MenuRenderer renderer;
+    private final List<MenuButton> buttons = new ArrayList<>();
+
+    private Display cursorEntity;
+    private MenuAnimator animator;
+    private Location oldLocation;
+    private double menuDistance;
+    private Location menuOrigin;
+    private float spawnYaw;
+    private float spawnPitch;
+    private boolean closed = false;
+
+    public Menu(Aurus plugin, Player player) {
+        this.plugin = plugin;
+        this.player = player;
+        this.camera = new MenuCamera(player);
+        this.renderer = new MenuRenderer(new ActionProcessor(plugin));
+    }
+
+    public void open(String menuId) {
+        ConfigurationSection section = plugin.getConfigHandler().getMenuSection(menuId);
+        if (section == null)
+            return;
+
+        this.oldLocation = player.getLocation().clone();
+        this.menuDistance = section.getDouble("distance", 2.5);
+
+        Location savedLocation = player.getLocation().clone();
+        camera.spawn();
+        player.teleport(savedLocation);
+
+        this.spawnYaw = player.getLocation().getYaw();
+        this.spawnPitch = player.getLocation().getPitch();
+        this.menuOrigin = MathUtil.getMenuOrigin(camera.getEyeLocation(), spawnYaw, spawnPitch, menuDistance);
+
+        spawnCursor();
+
+        ConfigurationSection comps = section.getConfigurationSection("components");
+        if (comps != null) {
+            for (String key : comps.getKeys(false)) {
+                ConfigurationSection c = comps.getConfigurationSection(key);
+                double bx = c.getDouble("x");
+                double by = c.getDouble("y");
+                Location loc = calculateComponentLocation(bx, by);
+                MenuButton btn = renderer.createComponent(player, c.getString("type", "BUTTON").toUpperCase(), c, loc,
+                        bx, by, this::close);
+                if (btn != null) {
+                    buttons.add(btn);
+                    for (Player otherPlayer : Bukkit.getOnlinePlayers()) {
+                        if (!otherPlayer.equals(player)) {
+                            otherPlayer.hideEntity(plugin, btn.getDisplay());
+                            otherPlayer.hideEntity(plugin, player);
+                        }
+                    }
+                }
+            }
+        }
+
+        player.hideEntity(plugin, player);
+        player.addPotionEffect(
+                new PotionEffect(PotionEffectType.INVISIBILITY, Integer.MAX_VALUE, 0, false, false, false));
+
+        int delay = section.getInt("update-in-ticks", 20);
+        this.animator = new MenuAnimator(this, player, buttons, menuDistance, delay);
+        this.animator.runTaskTimer(plugin, 0L, 1L);
+    }
+
+    private void spawnCursor() {
+        ConfigurationSection c = plugin.getConfigHandler().getCursorSection();
+        Location loc = menuOrigin.clone();
+        loc.setYaw(spawnYaw + 180f);
+        loc.setPitch(-spawnPitch);
+
+        TextDisplay td = (TextDisplay) player.getWorld().spawnEntity(loc, EntityType.TEXT_DISPLAY);
+        td.setBillboard(Display.Billboard.FIXED);
+
+        String val = c != null ? c.getString("value", "●") : "●";
+        val = renderer.getActionProcessor().parse(player, val);
+        td.setText(ColorUtils.format(val));
+        td.setBackgroundColor(Color.fromARGB(0, 0, 0, 0));
+        renderer.setupDisplay(td, (float) (c != null ? c.getDouble("size", 1.0) : 1.0), c);
+        this.cursorEntity = td;
+
+        for (Player otherPlayer : Bukkit.getOnlinePlayers()) {
+            if (!otherPlayer.equals(player)) {
+                otherPlayer.hideEntity(plugin, td);
+            }
+        }
+    }
+
+    public Location calculateComponentLocation(double x, double y) {
+        return MathUtil.calculateComponentLocation(menuOrigin, spawnYaw, spawnPitch, x, y);
+    }
+
+    public void close() {
+        if (closed)
+            return;
+        closed = true;
+
+        if (oldLocation != null && player.isOnline())
+            player.teleport(oldLocation);
+        if (animator != null)
+            animator.cancel();
+        camera.remove();
+        if (cursorEntity != null)
+            cursorEntity.remove();
+        buttons.forEach(b -> b.getDisplay().remove());
+        buttons.clear();
+        plugin.getMenuManager().removeMenu(player.getUniqueId());
+
+        player.showEntity(plugin, player);
+        player.removePotionEffect(PotionEffectType.INVISIBILITY);
+        for (Player otherPlayer : Bukkit.getOnlinePlayers()) {
+            if (!otherPlayer.equals(player)) {
+                otherPlayer.showEntity(plugin, player);
+            }
+        }
+    }
+
+    public void updateVisuals() {
+        for (MenuButton btn : buttons) {
+            btn.updateText(player);
+        }
+    }
+
+    public MenuCamera getCamera() {
+        return camera;
+    }
+
+    public Display getCursor() {
+        return cursorEntity;
+    }
+
+    public List<MenuButton> getButtons() {
+        return buttons;
+    }
+
+    public Location getMenuOrigin() {
+        return menuOrigin;
+    }
+
+    public float getSpawnYaw() {
+        return spawnYaw;
+    }
+
+    public float getSpawnPitch() {
+        return spawnPitch;
+    }
+
+    public double getMenuDistance() {
+        return menuDistance;
     }
 }
 
@@ -467,6 +574,8 @@ public class MoveListener implements Listener {
             } else {
                 lastSafeLocations.put(player.getUniqueId(), event.getFrom().toVector());
             }
+        } else {
+            lastSafeLocations.remove(player.getUniqueId());
         }
     }
 
@@ -482,6 +591,7 @@ package com.fendrixx.aurus.listeners;
 import com.fendrixx.aurus.Aurus;
 import com.fendrixx.aurus.menu.Menu;
 import com.fendrixx.aurus.menu.MenuButton;
+import com.fendrixx.aurus.util.MathUtil;
 import org.bukkit.Sound;
 import org.bukkit.entity.Player;
 import org.bukkit.event.EventHandler;
@@ -490,8 +600,13 @@ import org.bukkit.event.block.Action;
 import org.bukkit.event.player.PlayerInteractEvent;
 import org.bukkit.event.player.PlayerQuitEvent;
 
+import java.util.HashMap;
+import java.util.Map;
+import java.util.UUID;
+
 public class InteractionListener implements Listener {
     private final Aurus plugin;
+    private final Map<UUID, Long> lastClick = new HashMap<>();
 
     public InteractionListener(Aurus plugin) {
         this.plugin = plugin;
@@ -502,41 +617,61 @@ public class InteractionListener implements Listener {
         Player player = event.getPlayer();
         Menu menu = plugin.getMenuManager().getActiveMenu(player.getUniqueId());
 
-        if (menu == null) return;
+        if (menu == null)
+            return;
 
         event.setCancelled(true);
 
-        if (event.getAction() == Action.PHYSICAL) return;
+        if (event.getAction() == Action.PHYSICAL)
+            return;
+
+        long now = System.currentTimeMillis();
+        if (lastClick.containsKey(player.getUniqueId()) && now - lastClick.get(player.getUniqueId()) < 250)
+            return;
+        lastClick.put(player.getUniqueId(), now);
 
         processMenuClick(player, menu);
     }
 
     public void handle3DClick(Player player) {
         Menu menu = plugin.getMenuManager().getActiveMenu(player.getUniqueId());
-        if (menu == null) return;
+        if (menu == null)
+            return;
+        long now = System.currentTimeMillis();
+        if (lastClick.containsKey(player.getUniqueId()) && now - lastClick.get(player.getUniqueId()) < 250)
+            return;
+        lastClick.put(player.getUniqueId(), now);
+
         processMenuClick(player, menu);
     }
 
     private void processMenuClick(Player player, Menu menu) {
-        if (menu.getCursor() == null) return;
+        float pYaw = player.getLocation().getYaw();
+        float pPitch = player.getLocation().getPitch();
+        float cYaw = menu.getSpawnYaw();
+        float cPitch = menu.getSpawnPitch();
+        double dist = menu.getMenuDistance();
+
+        float dYaw = MathUtil.normalizeAngle(pYaw - cYaw);
+        float dPitch = MathUtil.normalizeAngle(pPitch - cPitch);
+
+        double cursorX = Math.tan(Math.toRadians(dYaw)) * dist;
+        double cursorY = -Math.tan(Math.toRadians(dPitch)) * dist;
 
         for (MenuButton btn : menu.getButtons()) {
-            if (btn.getDisplay() == null) continue;
+            double size = btn.getConfig().getDouble("size", 1.0);
+            double hitRadius = 0.5 * size;
 
-            double dist = menu.getCursor().getLocation().distance(btn.getDisplay().getLocation());
+            double dx = cursorX - btn.getBaseX();
+            double dy = cursorY - btn.getBaseY();
+            double d2 = Math.sqrt(dx * dx + dy * dy);
 
-            double clickRadius = 0.5 * btn.getConfig().getDouble("size", 1.0);
-
-            if (dist < clickRadius) {
+            if (d2 < hitRadius) {
                 if ("INPUT".equalsIgnoreCase(btn.getType())) {
-                    String variable = btn.getVariableName();
-                    plugin.getInputProcessor().startInput(player, variable);
+                    plugin.getInputProcessor().startInput(player, btn.getVariableName());
                 }
-
                 btn.onClick();
-
                 player.playSound(player.getLocation(), Sound.UI_BUTTON_CLICK, 0.6f, 1.2f);
-
                 break;
             }
         }
@@ -547,6 +682,7 @@ public class InteractionListener implements Listener {
         plugin.getMenuManager().closeMenu(event.getPlayer());
     }
 }
+
 
 FILE: ./src/main/java/com/fendrixx/aurus/util/ColorUtils.java
 package com.fendrixx.aurus.util;
@@ -572,58 +708,71 @@ public class ColorUtils {
 
     @NotNull
     public static String format(@NotNull String message) {
-        if (message.isEmpty()) return message;
+        if (message.isEmpty())
+            return message;
 
         Component component = MINI_MESSAGE.deserialize(message)
                 .decoration(TextDecoration.ITALIC, TextDecoration.State.FALSE);
 
         return SERIALIZER.serialize(component);
     }
-
-    public static List<String> formatList(List<String> list) {
-        if (list == null) return List.of();
-        return list.stream().map(ColorUtils::format).collect(Collectors.toList());
-    }
-
-    @NotNull
-    public static Component parse(@NotNull String message) {
-        return MINI_MESSAGE.deserialize(message)
-                .decoration(TextDecoration.ITALIC, TextDecoration.State.FALSE);
-    }
 }
 
 FILE: ./src/main/java/com/fendrixx/aurus/util/MathUtil.java
 package com.fendrixx.aurus.util;
 
-import net.objecthunter.exp4j.Expression;
-import net.objecthunter.exp4j.ExpressionBuilder;
 import org.bukkit.Location;
 import org.bukkit.util.Vector;
 
-import java.util.HashMap;
-import java.util.Map;
-
 public class MathUtil {
 
-    private static final Map<String, Expression> cache = new HashMap<>();
+    public static Vector[] getCameraBasis(float yaw, float pitch) {
+        double y = Math.toRadians(yaw);
+        double p = Math.toRadians(pitch);
 
-    public static Location getCursorLocation(Location cameraLoc, float cameraYaw, float playerYaw, float playerPitch, double distance) {
-        double yawRad = Math.toRadians(cameraYaw);
+        Vector forward = new Vector(
+                -Math.sin(y) * Math.cos(p),
+                -Math.sin(p),
+                Math.cos(y) * Math.cos(p)).normalize();
 
-        Vector forward = new Vector(-Math.sin(yawRad), 0, Math.cos(yawRad)).normalize();
-        Vector right = new Vector(forward.getZ(), 0, -forward.getX()).normalize();
-        Vector up = new Vector(0, 1, 0);
+        Vector worldUp = new Vector(0, 1, 0);
+        Vector right = forward.clone().crossProduct(worldUp).normalize();
+        Vector up = right.clone().crossProduct(forward).normalize();
 
-        float deltaYaw = normalizeAngle(playerYaw - cameraYaw);
-        float limitedPitch = Math.max(-80, Math.min(80, playerPitch));
+        return new Vector[] { forward, right, up };
+    }
 
-        double x = -Math.tan(Math.toRadians(deltaYaw)) * distance;
-        double y = Math.tan(Math.toRadians(-limitedPitch)) * distance;
+    public static Location getMenuOrigin(Location eyeLoc, float yaw, float pitch, double distance) {
+        Vector[] basis = getCameraBasis(yaw, pitch);
+        return eyeLoc.clone().add(basis[0].clone().multiply(distance));
+    }
 
-        Location loc = cameraLoc.clone()
-                .add(forward.multiply(distance))
-                .add(right.multiply(x))
-                .add(up.multiply(y));
+    public static Location calculateComponentLocation(Location origin, float yaw, float pitch, double x, double y) {
+        Vector[] basis = getCameraBasis(yaw, pitch);
+
+        Location loc = origin.clone()
+                .add(basis[1].clone().multiply(x))
+                .add(basis[2].clone().multiply(y));
+
+        loc.setYaw(yaw + 180f);
+        loc.setPitch(-pitch);
+
+        return loc;
+    }
+
+    public static Location getCursorLocation(Location origin, float cameraYaw, float cameraPitch,
+            float playerYaw, float playerPitch, double distance) {
+        Vector[] basis = getCameraBasis(cameraYaw, cameraPitch);
+
+        float dYaw = normalizeAngle(playerYaw - cameraYaw);
+        float dPitch = normalizeAngle(playerPitch - cameraPitch);
+
+        double cx = Math.tan(Math.toRadians(dYaw)) * distance;
+        double cy = -Math.tan(Math.toRadians(dPitch)) * distance;
+
+        Location loc = origin.clone()
+                .add(basis[1].clone().multiply(cx))
+                .add(basis[2].clone().multiply(cy));
 
         loc.setYaw(playerYaw + 180f);
         loc.setPitch(-playerPitch);
@@ -632,136 +781,25 @@ public class MathUtil {
     }
 
     public static float normalizeAngle(float angle) {
-        while (angle <= -180) angle += 360;
-        while (angle > 180) angle -= 360;
+        while (angle <= -180)
+            angle += 360;
+        while (angle > 180)
+            angle -= 360;
         return angle;
-    }
-
-    public static Location getComponentLocation(Location cameraLoc, float cameraYaw, double distance, double x, double y) {
-        double yawRad = Math.toRadians(cameraYaw);
-        Vector forward = new Vector(-Math.sin(yawRad), 0, Math.cos(yawRad)).normalize();
-        Vector right = new Vector(forward.getZ(), 0, -forward.getX()).normalize();
-        Vector up = new Vector(0, 1, 0);
-
-        return cameraLoc.clone()
-                .add(forward.multiply(distance))
-                .add(right.multiply(x))
-                .add(up.multiply(y));
     }
 
     public static double evaluate(String formula, double t) {
         try {
-            Expression e = cache.computeIfAbsent(formula, f ->
-                    new ExpressionBuilder(f)
-                            .variable("t")
-                            .build()
-            );
-            return e.setVariable("t", t).evaluate();
+            return new net.objecthunter.exp4j.ExpressionBuilder(formula)
+                    .variable("t")
+                    .build()
+                    .setVariable("t", t)
+                    .evaluate();
         } catch (Exception e) {
             return 0;
         }
     }
 }
-
-FILE: ./src/main/java/com/fendrixx/aurus/util/NMSUtil.java
-package com.fendrixx.aurus.util;
-
-import org.bukkit.Bukkit;
-import org.bukkit.entity.Entity;
-import org.bukkit.entity.Player;
-
-import java.lang.reflect.Constructor;
-import java.lang.reflect.Field;
-import java.lang.reflect.Method;
-
-public class NMSUtil {
-
-    private static Method getHandlePlayerMethod;
-    private static Method getHandleEntityMethod;
-    private static Method sendPacketMethod;
-    private static Constructor<?> cameraPacketConstructor;
-    private static Field connectionField;
-    private static boolean initialized = false;
-
-    private static void init() {
-        if (initialized) return;
-        initialized = true;
-        try {
-            Class<?> craftPlayerClass = resolveCraftClass("entity.CraftPlayer");
-            Class<?> craftEntityClass = resolveCraftClass("entity.CraftEntity");
-            getHandlePlayerMethod = craftPlayerClass.getMethod("getHandle");
-            getHandleEntityMethod = craftEntityClass.getMethod("getHandle");
-
-            Class<?> serverPlayerClass = getHandlePlayerMethod.getReturnType();
-            Class<?> packetClass = Class.forName("net.minecraft.network.protocol.Packet");
-
-            for (Field f : serverPlayerClass.getFields()) {
-                Class<?> fieldType = f.getType();
-                for (Method m : fieldType.getMethods()) {
-                    if (m.getParameterCount() == 1 && packetClass.isAssignableFrom(m.getParameterTypes()[0])) {
-                        connectionField = f;
-                        sendPacketMethod = m;
-                        break;
-                    }
-                }
-                if (sendPacketMethod != null) break;
-            }
-
-            if (sendPacketMethod == null) {
-                throw new RuntimeException("Could not find send(Packet) method on server player connection");
-            }
-
-            Class<?> nmsEntityClass = getHandleEntityMethod.getReturnType();
-            Class<?> cameraClass = Class.forName("net.minecraft.network.protocol.game.ClientboundSetCameraPacket");
-            for (Constructor<?> c : cameraClass.getConstructors()) {
-                if (c.getParameterCount() == 1 && c.getParameterTypes()[0].isAssignableFrom(nmsEntityClass)) {
-                    cameraPacketConstructor = c;
-                    break;
-                }
-            }
-
-            if (cameraPacketConstructor == null) {
-                throw new RuntimeException("Could not find ClientboundSetCameraPacket constructor");
-            }
-
-        } catch (RuntimeException e) {
-            throw e;
-        } catch (Exception e) {
-            throw new RuntimeException("Failed to initialize NMS reflection", e);
-        }
-    }
-
-    private static Class<?> resolveCraftClass(String relativeClass) {
-        String serverPackage = Bukkit.getServer().getClass().getPackage().getName();
-        try {
-            return Class.forName(serverPackage + "." + relativeClass);
-        } catch (ClassNotFoundException e) {
-            throw new RuntimeException("Could not resolve CraftBukkit class: " + relativeClass, e);
-        }
-    }
-
-    public static void sendCameraPacket(Player player, Entity target) {
-        init();
-        try {
-            Object nmsTarget = getHandleEntityMethod.invoke(target);
-            Object packet = cameraPacketConstructor.newInstance(nmsTarget);
-            sendPacket(player, packet);
-        } catch (Exception e) {
-            throw new RuntimeException("Failed to send camera packet", e);
-        }
-    }
-
-    private static void sendPacket(Player player, Object packet) {
-        try {
-            Object handle = getHandlePlayerMethod.invoke(player);
-            Object connection = connectionField.get(handle);
-            sendPacketMethod.invoke(connection, packet);
-        } catch (Exception e) {
-            throw new RuntimeException("Failed to send packet", e);
-        }
-    }
-}
-
 
 FILE: ./src/main/java/com/fendrixx/aurus/commands/AurusCommand.java
 package com.fendrixx.aurus.commands;
@@ -788,19 +826,29 @@ public class AurusCommand implements CommandExecutor, TabCompleter {
     }
 
     @Override
-    public boolean onCommand(@NotNull CommandSender sender, @NotNull Command command, @NotNull String label, String[] args) {
-        if (!(sender instanceof Player player)) return true;
+    public boolean onCommand(@NotNull CommandSender sender, @NotNull Command command, @NotNull String label,
+            String[] args) {
+        if (!(sender instanceof Player player))
+            return true;
+
+        if (!player.hasPermission("aurus.admin")) {
+            plugin.adventure().player(player).sendMessage(
+                    mm.deserialize(prefix + "<dark_gray>[<red>✘<dark_gray>] <red>You do not have permission."));
+            return true;
+        }
 
         if (args.length > 0) {
             if (args[0].equalsIgnoreCase("open")) {
                 if (args.length < 2) {
-                    plugin.adventure().player(player).sendMessage(mm.deserialize(prefix + "<dark_gray>[<yellow>?<dark_gray>] <gray>Usage: /aurus open <menu_id>"));
+                    plugin.adventure().player(player).sendMessage(mm.deserialize(
+                            prefix + "<dark_gray>[<yellow>?<dark_gray>] <gray>Usage: /aurus open <menu_id>"));
                     return true;
                 }
 
                 String menuId = args[1];
                 if (plugin.getConfigHandler().getMenuSection(menuId) == null) {
-                    plugin.adventure().player(player).sendMessage(mm.deserialize(prefix + "<dark_gray>[<red>✘<dark_gray>] <red>Menu <yellow>" + menuId + "</yellow> not found."));
+                    plugin.adventure().player(player).sendMessage(mm.deserialize(prefix
+                            + "<dark_gray>[<red>✘<dark_gray>] <red>Menu <yellow>" + menuId + "</yellow> not found."));
                     return true;
                 }
 
@@ -811,27 +859,32 @@ public class AurusCommand implements CommandExecutor, TabCompleter {
             if (args[0].equalsIgnoreCase("reload")) {
                 plugin.getMenuManager().closeAll();
                 plugin.getConfigHandler().reload();
-                plugin.adventure().player(player).sendMessage(mm.deserialize(prefix + "<dark_gray>[<green>✔<dark_gray>] <green>Configuration and menus reloaded."));
+                plugin.adventure().player(player).sendMessage(mm.deserialize(
+                        prefix + "<dark_gray>[<green>✔<dark_gray>] <green>Configuration and menus reloaded."));
                 return true;
             }
 
             if (args[0].equalsIgnoreCase("close")) {
                 if (plugin.getMenuManager().getActiveMenu(player.getUniqueId()) != null) {
                     plugin.getMenuManager().closeMenu(player);
-                    plugin.adventure().player(player).sendMessage(mm.deserialize(prefix + "<dark_gray>[<green>✔<dark_gray>] <green>Menu closed."));
+                    plugin.adventure().player(player).sendMessage(
+                            mm.deserialize(prefix + "<dark_gray>[<green>✔<dark_gray>] <green>Menu closed."));
                 } else {
-                    plugin.adventure().player(player).sendMessage(mm.deserialize(prefix + "<dark_gray>[<yellow>!<dark_gray>] <red>You don't have an active menu."));
+                    plugin.adventure().player(player).sendMessage(mm.deserialize(
+                            prefix + "<dark_gray>[<yellow>!<dark_gray>] <red>You don't have an active menu."));
                 }
                 return true;
             }
         }
 
-        plugin.adventure().player(player).sendMessage(mm.deserialize(prefix + "<dark_gray>[<yellow>?<dark_gray>] <gray>Available commands: <white>open, close, reload"));
+        plugin.adventure().player(player).sendMessage(mm.deserialize(
+                prefix + "<dark_gray>[<yellow>?<dark_gray>] <gray>Available commands: <white>open, close, reload"));
         return true;
     }
 
     @Override
-    public List<String> onTabComplete(@NotNull CommandSender sender, @NotNull Command command, @NotNull String alias, String[] args) {
+    public List<String> onTabComplete(@NotNull CommandSender sender, @NotNull Command command, @NotNull String alias,
+            String[] args) {
         List<String> suggestions = new ArrayList<>();
         if (args.length == 1) {
             suggestions.addAll(List.of("open", "reload", "close"));
@@ -879,9 +932,11 @@ public class ConfigHandler {
             plugin.saveDefaultConfig();
             plugin.reloadConfig();
             this.config = plugin.getConfig();
-            Bukkit.getConsoleSender().sendMessage(ColorUtils.format(prefix + "<dark_gray>[<green>✔<dark_gray>] <green>Main config loaded successfully!"));
+            Bukkit.getConsoleSender().sendMessage(ColorUtils
+                    .format(prefix + "<dark_gray>[<green>✔<dark_gray>] <green>Main config loaded successfully!"));
         } catch (Exception e) {
-            Bukkit.getConsoleSender().sendMessage(ColorUtils.format(prefix + "<dark_gray>[<red>✘<dark_gray>] <red>Failed to load config: " + e.getMessage()));
+            Bukkit.getConsoleSender().sendMessage(ColorUtils
+                    .format(prefix + "<dark_gray>[<red>✘<dark_gray>] <red>Failed to load config: " + e.getMessage()));
             this.config = new YamlConfiguration();
         }
     }
@@ -899,12 +954,14 @@ public class ConfigHandler {
                 plugin.saveResource("menus/animated_menu.yml", false);
                 plugin.saveResource("menus/pixelart.yml", false);
             } catch (Exception e) {
-                Bukkit.getConsoleSender().sendMessage(ColorUtils.format(prefix + "<dark_gray>[<yellow>!<dark_gray>] <gray>Could not save default menus."));
+                Bukkit.getConsoleSender().sendMessage(ColorUtils
+                        .format(prefix + "<dark_gray>[<yellow>!<dark_gray>] <gray>Could not save default menus."));
             }
         }
 
         File[] files = folder.listFiles((dir, name) -> name.endsWith(".yml"));
-        if (files == null) return;
+        if (files == null)
+            return;
 
         for (File file : files) {
             try {
@@ -912,15 +969,19 @@ public class ConfigHandler {
                 YamlConfiguration menuConfig = new YamlConfiguration();
                 menuConfig.load(file);
                 menus.put(name, menuConfig);
-                Bukkit.getConsoleSender().sendMessage(ColorUtils.format(prefix + "<dark_gray>[<green>✔<dark_gray>] <gray>Loaded menu: <white>" + name));
+                Bukkit.getConsoleSender().sendMessage(ColorUtils
+                        .format(prefix + "<dark_gray>[<green>✔<dark_gray>] <gray>Loaded menu: <white>" + name));
             } catch (Exception e) {
-                Bukkit.getConsoleSender().sendMessage(ColorUtils.format(prefix + "<dark_gray>[<red>✘<dark_gray>] <red>Error loading <yellow>" + file.getName() + "<red>: " + e.getMessage()));
+                Bukkit.getConsoleSender().sendMessage(
+                        ColorUtils.format(prefix + "<dark_gray>[<red>✘<dark_gray>] <red>Error loading <yellow>"
+                                + file.getName() + "<red>: " + e.getMessage()));
             }
         }
     }
 
     public ConfigurationSection getMenuSection(String menuId) {
-        if (menuId == null || menuId.isEmpty()) return null;
+        if (menuId == null || menuId.isEmpty())
+            return null;
 
         for (FileConfiguration menuFile : menus.values()) {
             if (menuFile.isConfigurationSection(menuId)) {
@@ -944,30 +1005,6 @@ public class ConfigHandler {
             keys.addAll(config.getConfigurationSection("menus").getKeys(false));
         }
         return keys;
-    }
-
-    public String getGlobalCursor() {
-        return config != null ? config.getString("cursor", "<red><bold>!") : "<red><bold>!";
-    }
-
-    public Location getLocation(String menuId) {
-        ConfigurationSection section = getMenuSection(menuId);
-        if (section == null || !section.isConfigurationSection("location")) return null;
-
-        ConfigurationSection loc = section.getConfigurationSection("location");
-        try {
-            return new Location(
-                    Bukkit.getWorld(loc.getString("world", "world")),
-                    loc.getDouble("x"),
-                    loc.getDouble("y"),
-                    loc.getDouble("z"),
-                    (float) loc.getDouble("yaw"),
-                    (float) loc.getDouble("pitch")
-            );
-        } catch (Exception e) {
-            Bukkit.getConsoleSender().sendMessage(ColorUtils.format(prefix + "<dark_gray>[<red>✘<dark_gray>] <red>Invalid location for menu: " + menuId));
-            return null;
-        }
     }
 
     public ConfigurationSection getCursorSection() {
@@ -994,10 +1031,12 @@ import java.util.List;
 public class ActionProcessor {
     private final Aurus plugin;
 
-    public ActionProcessor(Aurus plugin) { this.plugin = plugin; }
+    public ActionProcessor(Aurus plugin) {
+        this.plugin = plugin;
+    }
 
     public void process(Player player, String action, Runnable closeCallback) {
-        String cmd = action.replace("%player%", player.getName());
+        String cmd = parse(player, action).replace("%player%", player.getName());
 
         if (cmd.equalsIgnoreCase("[close]")) {
             if (closeCallback != null) {
@@ -1016,9 +1055,11 @@ public class ActionProcessor {
             plugin.adventure().player(player).sendMessage(MiniMessage.miniMessage().deserialize(cmd.substring(10)));
         } else if (cmd.startsWith("[openmenu] ")) {
             String menuId = cmd.substring(11).trim();
-            if (closeCallback != null) closeCallback.run();
+            if (closeCallback != null)
+                closeCallback.run();
             Bukkit.getScheduler().runTaskLater(plugin, () -> {
-                if (player.isOnline()) plugin.getMenuManager().openMenu(player, menuId);
+                if (player.isOnline())
+                    plugin.getMenuManager().openMenu(player, menuId);
             }, 2L);
         } else if (cmd.startsWith("[sound] ")) {
             String[] parts = cmd.substring(8).split(", ");
@@ -1027,17 +1068,21 @@ public class ActionProcessor {
                 float vol = parts.length > 1 ? Float.parseFloat(parts[1]) : 1.0f;
                 float pitch = parts.length > 2 ? Float.parseFloat(parts[2]) : 1.0f;
                 player.playSound(player.getLocation(), sound, vol, pitch);
-            } catch (Exception ignored) {}
+            } catch (Exception ignored) {
+            }
         }
     }
 
     public void processList(Player player, List<String> actions, Runnable closeCallback) {
-        if (actions == null) return;
-        for (String action : actions) process(player, action, closeCallback);
+        if (actions == null)
+            return;
+        for (String action : actions)
+            process(player, action, closeCallback);
     }
 
     public String parse(Player player, String text) {
-        if (text == null) return "";
+        if (text == null)
+            return "";
         if (Bukkit.getPluginManager().isPluginEnabled("PlaceholderAPI")) {
             return me.clip.placeholderapi.PlaceholderAPI.setPlaceholders(player, text);
         }
@@ -1059,11 +1104,12 @@ import org.bukkit.event.player.AsyncPlayerChatEvent;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.UUID;
+import java.util.concurrent.ConcurrentHashMap;
 
 public class InputProcessor implements Listener {
     private final Aurus plugin;
-    private final Map<UUID, String> playersEditing = new HashMap<>();
-    private final Map<String, String> savedValues = new HashMap<>();
+    private final Map<UUID, String> playersEditing = new ConcurrentHashMap<>();
+    private final Map<String, String> savedValues = new ConcurrentHashMap<>();
 
     public InputProcessor(Aurus plugin) {
         this.plugin = plugin;
@@ -1071,7 +1117,8 @@ public class InputProcessor implements Listener {
 
     public void startInput(Player player, String variableName) {
         playersEditing.put(player.getUniqueId(), variableName);
-        player.sendMessage(ColorUtils.format("<dark_gray>[<yellow>!<dark_gray>] <gray>Write in chat the input for " + variableName + "<dark_gray>(or put 'cancel')<gray>."));
+        player.sendMessage(ColorUtils.format("<dark_gray>[<yellow>!<dark_gray>] <gray>Write in chat the input for "
+                + variableName + "<dark_gray>(or put 'cancel')<gray>."));
     }
 
     @EventHandler
@@ -1079,17 +1126,19 @@ public class InputProcessor implements Listener {
         Player player = event.getPlayer();
         UUID uuid = player.getUniqueId();
 
-        if (!playersEditing.containsKey(uuid)) return;
+        if (!playersEditing.containsKey(uuid))
+            return;
 
         event.setCancelled(true);
         String message = event.getMessage();
         String variableName = playersEditing.get(uuid);
 
-        if (message.equalsIgnoreCase("cancelar")) {
+        if (message.equalsIgnoreCase("cancel")) {
             player.sendMessage(ColorUtils.format("<dark_gray>[<red>✘<dark_gray>] <red>Canceled"));
         } else {
             savedValues.put(variableName, message);
-            player.sendMessage(ColorUtils.format("<dark_gray>[<green>✔<dark_gray>] <gray>Input saved in" + variableName));
+            player.sendMessage(
+                    ColorUtils.format("<dark_gray>[<green>✔<dark_gray>] <gray>Input saved in " + variableName));
         }
 
         playersEditing.remove(uuid);
@@ -1119,7 +1168,7 @@ public class PAPIExpansion extends PlaceholderExpansion {
 
     @Override
     public String getIdentifier() {
-        return "Aurus";
+        return "aurus";
     }
 
     @Override
@@ -1155,34 +1204,41 @@ import com.fendrixx.aurus.menu.MenuManager;
 import com.fendrixx.aurus.processors.ActionProcessor;
 import com.fendrixx.aurus.processors.InputProcessor;
 import com.fendrixx.aurus.util.ColorUtils;
+import com.github.retrooper.packetevents.PacketEvents;
+import com.github.retrooper.packetevents.event.PacketListenerAbstract;
+import com.github.retrooper.packetevents.event.PacketReceiveEvent;
+import com.github.retrooper.packetevents.protocol.packettype.PacketType;
+import io.github.retrooper.packetevents.factory.spigot.SpigotPacketEventsBuilder;
 import net.kyori.adventure.platform.bukkit.BukkitAudiences;
 import org.bukkit.Bukkit;
 import org.bukkit.entity.Player;
-import org.bukkit.event.EventHandler;
-import org.bukkit.event.Listener;
-import org.bukkit.event.player.PlayerInteractEntityEvent;
 import org.bukkit.plugin.java.JavaPlugin;
 
-public class Aurus extends JavaPlugin implements Listener {
+public class Aurus extends JavaPlugin {
 
     private MenuManager menuManager;
     private BukkitAudiences adventure;
     private ConfigHandler configHandler;
     private ActionProcessor actionProcessor;
     private InputProcessor inputProcessor;
-    private PAPIExpansion aurusExpansion;
 
     @Override
     public void onLoad() {
-        Bukkit.getConsoleSender().sendMessage(ColorUtils.format("<dark_gray>[<gradient:dark_purple:yellow> Aurus </gradient><dark_gray>] [<yellow>↺<dark_gray>] <yellow>Plugin loading..."));
+        PacketEvents.setAPI(SpigotPacketEventsBuilder.build(this));
+        PacketEvents.getAPI().load();
+
+        Bukkit.getConsoleSender().sendMessage(ColorUtils.format(
+                "<dark_gray>[<gradient:dark_purple:yellow> Aurus </gradient><dark_gray>] [<yellow>↺<dark_gray>] <yellow>Plugin loading..."));
     }
 
     @Override
     public void onEnable() {
+        PacketEvents.getAPI().init();
         this.adventure = BukkitAudiences.create(this);
 
         this.configHandler = new ConfigHandler(this);
         this.menuManager = new MenuManager(this);
+        this.actionProcessor = new ActionProcessor(this);
         this.inputProcessor = new InputProcessor(this);
 
         if (Bukkit.getPluginManager().getPlugin("PlaceholderAPI") != null) {
@@ -1195,37 +1251,32 @@ public class Aurus extends JavaPlugin implements Listener {
         getServer().getPluginManager().registerEvents(interactionListener, this);
         getServer().getPluginManager().registerEvents(new MoveListener(this), this);
         getServer().getPluginManager().registerEvents(this.inputProcessor, this);
-        getServer().getPluginManager().registerEvents(this, this);
 
-        this.interactionListener = interactionListener;
+        registerPacketListener(interactionListener);
 
         sendStartupMessage();
     }
 
-    private InteractionListener interactionListener;
-
-    @EventHandler
-    public void onInteractEntity(PlayerInteractEntityEvent event) {
-        Player player = event.getPlayer();
-        if (menuManager.getActiveMenu(player.getUniqueId()) != null) {
-            event.setCancelled(true);
-            interactionListener.handle3DClick(player);
-        }
-    }
-
     @Override
     public void onDisable() {
-        Bukkit.getConsoleSender().sendMessage(ColorUtils.format("<dark_gray>[<gradient:dark_purple:yellow> Aurus </gradient><dark_gray>] [<yellow>↺<dark_gray>] <yellow>Disabling menus..."));
+        Bukkit.getConsoleSender().sendMessage(ColorUtils.format(
+                "<dark_gray>[<gradient:dark_purple:yellow> Aurus </gradient><dark_gray>] [<yellow>↺<dark_gray>] <yellow>Disabling menus..."));
         if (this.menuManager != null) {
             this.menuManager.closeAll();
         }
 
-        Bukkit.getConsoleSender().sendMessage(ColorUtils.format("<dark_gray>[<gradient:dark_purple:yellow> Aurus </gradient><dark_gray>] [<yellow>↺<dark_gray>] <yellow>Disabling adventure..."));
+        Bukkit.getConsoleSender().sendMessage(ColorUtils.format(
+                "<dark_gray>[<gradient:dark_purple:yellow> Aurus </gradient><dark_gray>] [<yellow>↺<dark_gray>] <yellow>Disabling adventure..."));
         if (this.adventure != null) {
             this.adventure.close();
         }
 
-        Bukkit.getConsoleSender().sendMessage(ColorUtils.format("<dark_gray>[<gradient:dark_purple:yellow> Aurus </gradient><dark_gray>] [<green>✔<dark_gray>] <green>Plugin disabled!"));
+        Bukkit.getConsoleSender().sendMessage(ColorUtils.format(
+                "<dark_gray>[<gradient:dark_purple:yellow> Aurus </gradient><dark_gray>] [<yellow>↺<dark_gray>] <yellow>Disabling packetevents..."));
+        PacketEvents.getAPI().terminate();
+
+        Bukkit.getConsoleSender().sendMessage(ColorUtils.format(
+                "<dark_gray>[<gradient:dark_purple:yellow> Aurus </gradient><dark_gray>] [<green>✔<dark_gray>] <green>Plugin disabled!"));
     }
 
     private void registerCommands() {
@@ -1236,9 +1287,26 @@ public class Aurus extends JavaPlugin implements Listener {
         }
     }
 
+    private void registerPacketListener(InteractionListener listener) {
+        PacketEvents.getAPI().getEventManager().registerListener(new PacketListenerAbstract() {
+            @Override
+            public void onPacketReceive(PacketReceiveEvent event) {
+                if (event.getPacketType() == PacketType.Play.Client.INTERACT_ENTITY) {
+                    Player player = (Player) event.getPlayer();
+                    if (menuManager.getActiveMenu(player.getUniqueId()) != null) {
+                        event.setCancelled(true);
+                        Bukkit.getScheduler().runTask(Aurus.this, () -> listener.handle3DClick(player));
+                    }
+                }
+            }
+        });
+    }
+
     private void sendStartupMessage() {
-        Bukkit.getConsoleSender().sendMessage(ColorUtils.format("<dark_gray>[<gradient:dark_purple:yellow> Aurus </gradient><dark_gray>] [<green>✔<dark_gray>] <green>Plugin enabled!"));
-        Bukkit.getConsoleSender().sendMessage(ColorUtils.format("<dark_gray>[<gradient:dark_purple:yellow> Aurus </gradient><dark_gray>] [<yellow>!<dark_gray>] <gold>ty for using my plugin! <dark_gray>~ Fendrixx"));
+        Bukkit.getConsoleSender().sendMessage(ColorUtils.format(
+                "<dark_gray>[<gradient:dark_purple:yellow> Aurus </gradient><dark_gray>] [<green>✔<dark_gray>] <green>Plugin enabled!"));
+        Bukkit.getConsoleSender().sendMessage(ColorUtils.format(
+                "<dark_gray>[<gradient:dark_purple:yellow> Aurus </gradient><dark_gray>] [<yellow>!<dark_gray>] <gold>ty for using my plugin! <dark_gray>~ Fendrixx"));
         Bukkit.getConsoleSender().sendMessage(ColorUtils.format("""
                 \s
                 <gradient:dark_purple:yellow>| ░█▀▀█⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀</gradient>
@@ -1249,11 +1317,25 @@ public class Aurus extends JavaPlugin implements Listener {
                 """));
     }
 
-    public BukkitAudiences adventure() { return this.adventure; }
-    public MenuManager getMenuManager() { return this.menuManager; }
-    public ConfigHandler getConfigHandler() { return this.configHandler; }
-    public ActionProcessor getActionProcessor() {return this.actionProcessor; }
-    public InputProcessor getInputProcessor() {return this.inputProcessor; }
+    public BukkitAudiences adventure() {
+        return this.adventure;
+    }
+
+    public MenuManager getMenuManager() {
+        return this.menuManager;
+    }
+
+    public ConfigHandler getConfigHandler() {
+        return this.configHandler;
+    }
+
+    public ActionProcessor getActionProcessor() {
+        return this.actionProcessor;
+    }
+
+    public InputProcessor getInputProcessor() {
+        return this.inputProcessor;
+    }
 }
 
 

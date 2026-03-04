@@ -4,7 +4,6 @@ import com.fendrixx.aurus.processors.ActionProcessor;
 import com.fendrixx.aurus.util.ColorUtils;
 import org.bukkit.Color;
 import org.bukkit.Location;
-import org.bukkit.Material;
 import org.bukkit.configuration.ConfigurationSection;
 import org.bukkit.entity.*;
 import org.bukkit.inventory.ItemStack;
@@ -23,40 +22,40 @@ public class MenuRenderer {
     }
 
     public MenuButton createComponent(Player player, String type, ConfigurationSection conf, Location loc,
-            Runnable closeAction) {
+            double baseX, double baseY, Runnable closeAction) {
         float size = (float) conf.getDouble("size", 1.0);
         String rawText = conf.getString("text", "");
 
         return switch (type) {
             case "TEXT" -> {
                 TextDisplay td = spawnTextDisplay(loc, player, rawText, conf, size);
-                yield new MenuButton(td, rawText, null, "TEXT", null, conf);
+                yield new MenuButton(td, rawText, null, "TEXT", null, conf, actionProcessor, baseX, baseY);
             }
             case "BUTTON" -> {
                 TextDisplay td = spawnTextDisplay(loc, player, rawText, conf, size);
                 yield new MenuButton(td, rawText,
-                        () -> actionProcessor.processList(player, conf.getStringList("actions"), closeAction), "BUTTON",
-                        null, conf);
+                        () -> actionProcessor.processList(player, conf.getStringList("actions"), closeAction),
+                        "BUTTON", null, conf, actionProcessor, baseX, baseY);
             }
             case "INPUT" -> {
                 TextDisplay td = spawnTextDisplay(loc, player, rawText, conf, size);
                 yield new MenuButton(td, rawText,
-                        () -> actionProcessor.processList(player, conf.getStringList("actions"), closeAction), "INPUT",
-                        conf.getString("variable_name"), conf);
+                        () -> actionProcessor.processList(player, conf.getStringList("actions"), closeAction),
+                        "INPUT", conf.getString("variable_name"), conf, actionProcessor, baseX, baseY);
             }
             case "ITEM" -> {
                 ItemDisplay idisp = (ItemDisplay) loc.getWorld().spawnEntity(loc, EntityType.ITEM_DISPLAY);
                 String mat = actionProcessor.parse(player, conf.getString("material", "STONE"));
                 idisp.setItemStack(new ItemStack(org.bukkit.Material.matchMaterial(mat)));
                 setupDisplay(idisp, size, conf);
-                yield new MenuButton(idisp, null, null, "ITEM", null, conf);
+                yield new MenuButton(idisp, null, null, "ITEM", null, conf, actionProcessor, baseX, baseY);
             }
             case "BLOCK" -> {
                 BlockDisplay bd = (BlockDisplay) loc.getWorld().spawnEntity(loc, EntityType.BLOCK_DISPLAY);
                 String mat = actionProcessor.parse(player, conf.getString("material", "STONE"));
                 bd.setBlock(org.bukkit.Material.matchMaterial(mat).createBlockData());
                 setupDisplay(bd, size, conf);
-                yield new MenuButton(bd, null, null, "BLOCK", null, conf);
+                yield new MenuButton(bd, null, null, "BLOCK", null, conf, actionProcessor, baseX, baseY);
             }
             default -> null;
         };

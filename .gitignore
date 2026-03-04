@@ -3,3 +3,4 @@ dependency-reduced-pom.xml
 Aurus.iml
 .idea/
 backups/
+.vscode/
