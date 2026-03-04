@@ -15,7 +15,8 @@ public class MenuButton {
     private final String variableName;
     private final ConfigurationSection config;
 
-    public MenuButton(Display display, String rawText, Runnable onClick, String type, String variableName, ConfigurationSection config) {
+    public MenuButton(Display display, String rawText, Runnable onClick, String type, String variableName,
+            ConfigurationSection config) {
         this.display = display;
         this.rawText = rawText;
         this.onClick = onClick;
@@ -26,14 +27,32 @@ public class MenuButton {
 
     public void updateText(Player player) {
         if (display instanceof TextDisplay td && rawText != null) {
-            String parsed = PlaceholderAPI.setPlaceholders(player, rawText);
+            String parsed = rawText;
+            if (org.bukkit.Bukkit.getPluginManager().isPluginEnabled("PlaceholderAPI")) {
+                parsed = me.clip.placeholderapi.PlaceholderAPI.setPlaceholders(player, rawText);
+            }
             td.setText(ColorUtils.format(parsed));
         }
     }
 
-    public Display getDisplay() { return display; }
-    public String getType() { return type; }
-    public String getVariableName() { return variableName; }
-    public ConfigurationSection getConfig() { return config; }
-    public void onClick() { if (onClick != null) onClick.run(); }
+    public Display getDisplay() {
+        return display;
+    }
+
+    public String getType() {
+        return type;
+    }
+
+    public String getVariableName() {
+        return variableName;
+    }
+
+    public ConfigurationSection getConfig() {
+        return config;
+    }
+
+    public void onClick() {
+        if (onClick != null)
+            onClick.run();
+    }
 }

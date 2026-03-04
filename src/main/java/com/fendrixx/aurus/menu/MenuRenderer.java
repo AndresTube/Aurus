@@ -18,7 +18,12 @@ public class MenuRenderer {
         this.actionProcessor = actionProcessor;
     }
 
-    public MenuButton createComponent(Player player, String type, ConfigurationSection conf, Location loc, Runnable closeAction) {
+    public ActionProcessor getActionProcessor() {
+        return actionProcessor;
+    }
+
+    public MenuButton createComponent(Player player, String type, ConfigurationSection conf, Location loc,
+            Runnable closeAction) {
         float size = (float) conf.getDouble("size", 1.0);
         String rawText = conf.getString("text", "");
 
@@ -29,21 +34,27 @@ public class MenuRenderer {
             }
             case "BUTTON" -> {
                 TextDisplay td = spawnTextDisplay(loc, player, rawText, conf, size);
-                yield new MenuButton(td, rawText, () -> actionProcessor.processList(player, conf.getStringList("actions"), closeAction), "BUTTON", null, conf);
+                yield new MenuButton(td, rawText,
+                        () -> actionProcessor.processList(player, conf.getStringList("actions"), closeAction), "BUTTON",
+                        null, conf);
             }
             case "INPUT" -> {
                 TextDisplay td = spawnTextDisplay(loc, player, rawText, conf, size);
-                yield new MenuButton(td, rawText, () -> actionProcessor.processList(player, conf.getStringList("actions"), closeAction), "INPUT", conf.getString("variable_name"), conf);
+                yield new MenuButton(td, rawText,
+                        () -> actionProcessor.processList(player, conf.getStringList("actions"), closeAction), "INPUT",
+                        conf.getString("variable_name"), conf);
             }
             case "ITEM" -> {
-                ItemDisplay id = (ItemDisplay) loc.getWorld().spawnEntity(loc, EntityType.ITEM_DISPLAY);
-                id.setItemStack(new ItemStack(Material.matchMaterial(conf.getString("material", "STONE"))));
-                setupDisplay(id, size, conf);
-                yield new MenuButton(id, null, null, "ITEM", null, conf);
+                ItemDisplay idisp = (ItemDisplay) loc.getWorld().spawnEntity(loc, EntityType.ITEM_DISPLAY);
+                String mat = actionProcessor.parse(player, conf.getString("material", "STONE"));
+                idisp.setItemStack(new ItemStack(org.bukkit.Material.matchMaterial(mat)));
+                setupDisplay(idisp, size, conf);
+                yield new MenuButton(idisp, null, null, "ITEM", null, conf);
             }
             case "BLOCK" -> {
                 BlockDisplay bd = (BlockDisplay) loc.getWorld().spawnEntity(loc, EntityType.BLOCK_DISPLAY);
-                bd.setBlock(Material.matchMaterial(conf.getString("material", "STONE")).createBlockData());
+                String mat = actionProcessor.parse(player, conf.getString("material", "STONE"));
+                bd.setBlock(org.bukkit.Material.matchMaterial(mat).createBlockData());
                 setupDisplay(bd, size, conf);
                 yield new MenuButton(bd, null, null, "BLOCK", null, conf);
             }
@@ -55,7 +66,8 @@ public class MenuRenderer {
         TextDisplay td = (TextDisplay) loc.getWorld().spawnEntity(loc, EntityType.TEXT_DISPLAY);
         td.setBillboard(Display.Billboard.FIXED);
         td.setText(ColorUtils.format(actionProcessor.parse(p, raw)));
-        if (!conf.getBoolean("background", true)) td.setBackgroundColor(Color.fromARGB(0, 0, 0, 0));
+        if (!conf.getBoolean("background", true))
+            td.setBackgroundColor(Color.fromARGB(0, 0, 0, 0));
         setupDisplay(td, size, conf);
         return td;
     }
@@ -67,8 +79,7 @@ public class MenuRenderer {
             trans.getLeftRotation().rotationXYZ(
                     (float) Math.toRadians(conf.getDouble("rotation.x")),
                     (float) Math.toRadians(conf.getDouble("rotation.y")),
-                    (float) Math.toRadians(conf.getDouble("rotation.z"))
-            );
+                    (float) Math.toRadians(conf.getDouble("rotation.z")));
         }
         display.setTransformation(trans);
     }

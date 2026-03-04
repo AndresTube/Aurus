@@ -29,7 +29,8 @@ public class MenuCamera {
 
         PacketEvents.getAPI().getPlayerManager().sendPacket(player, new WrapperPlayServerCamera(tripod.getEntityId()));
 
-        PacketEvents.getAPI().getPlayerManager().sendPacket(player, new WrapperPlayServerSetPassengers(tripod.getEntityId(), new int[]{player.getEntityId()}));
+        PacketEvents.getAPI().getPlayerManager().sendPacket(player,
+                new WrapperPlayServerSetPassengers(tripod.getEntityId(), new int[] { player.getEntityId() }));
     }
 
     public void remove() {
@@ -45,7 +46,7 @@ public class MenuCamera {
     }
 
     public Location getEyeLocation() {
-        return getLocation().clone().add(0, 1.5, 0);
+        return getLocation().clone().add(0, 0.6, 0);
     }
 
     public Pig getTripod() {

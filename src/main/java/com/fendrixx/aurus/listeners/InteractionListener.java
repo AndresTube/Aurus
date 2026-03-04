@@ -3,6 +3,7 @@ package com.fendrixx.aurus.listeners;
 import com.fendrixx.aurus.Aurus;
 import com.fendrixx.aurus.menu.Menu;
 import com.fendrixx.aurus.menu.MenuButton;
+import org.bukkit.Location;
 import org.bukkit.Sound;
 import org.bukkit.entity.Player;
 import org.bukkit.event.EventHandler;
@@ -11,8 +12,13 @@ import org.bukkit.event.block.Action;
 import org.bukkit.event.player.PlayerInteractEvent;
 import org.bukkit.event.player.PlayerQuitEvent;
 
+import java.util.HashMap;
+import java.util.Map;
+import java.util.UUID;
+
 public class InteractionListener implements Listener {
     private final Aurus plugin;
+    private final Map<UUID, Long> lastClick = new HashMap<>();
 
     public InteractionListener(Aurus plugin) {
         this.plugin = plugin;
@@ -23,28 +29,46 @@ public class InteractionListener implements Listener {
         Player player = event.getPlayer();
         Menu menu = plugin.getMenuManager().getActiveMenu(player.getUniqueId());
 
-        if (menu == null) return;
+        if (menu == null)
+            return;
 
         event.setCancelled(true);
 
-        if (event.getAction() == Action.PHYSICAL) return;
+        if (event.getAction() == Action.PHYSICAL)
+            return;
+
+        long now = System.currentTimeMillis();
+        if (lastClick.containsKey(player.getUniqueId()) && now - lastClick.get(player.getUniqueId()) < 250) {
+            return;
+        }
+        lastClick.put(player.getUniqueId(), now);
 
         processMenuClick(player, menu);
     }
 
     public void handle3DClick(Player player) {
         Menu menu = plugin.getMenuManager().getActiveMenu(player.getUniqueId());
-        if (menu == null) return;
+        if (menu == null)
+            return;
+        long now = System.currentTimeMillis();
+        if (lastClick.containsKey(player.getUniqueId()) && now - lastClick.get(player.getUniqueId()) < 250) {
+            return;
+        }
+        lastClick.put(player.getUniqueId(), now);
+
         processMenuClick(player, menu);
     }
 
     private void processMenuClick(Player player, Menu menu) {
-        if (menu.getCursor() == null) return;
+        if (menu.getCursor() == null)
+            return;
 
         for (MenuButton btn : menu.getButtons()) {
-            if (btn.getDisplay() == null) continue;
+            if (btn.getDisplay() == null)
+                continue;
 
-            double dist = menu.getCursor().getLocation().distance(btn.getDisplay().getLocation());
+            Location hitLoc = btn.getDisplay().getLocation().clone().add(0, -0.1, 0);
+            double dist = menu.getCursor().getLocation().distance(hitLoc);
 
             double clickRadius = 0.5 * btn.getConfig().getDouble("size", 1.0);
 

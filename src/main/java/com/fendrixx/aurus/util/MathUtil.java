@@ -1,33 +1,57 @@
 package com.fendrixx.aurus.util;
 
-import net.objecthunter.exp4j.Expression;
-import net.objecthunter.exp4j.ExpressionBuilder;
 import org.bukkit.Location;
 import org.bukkit.util.Vector;
 
-import java.util.HashMap;
-import java.util.Map;
-
 public class MathUtil {
 
-    public static Location getCursorLocation(Location cameraLoc, float cameraYaw, float playerYaw, float playerPitch,
-            double distance) {
-        double yawRad = Math.toRadians(cameraYaw);
+    public static Vector[] getCameraBasis(float yaw, float pitch) {
+        double y = Math.toRadians(yaw);
+        double p = Math.toRadians(pitch);
 
-        Vector forward = new Vector(-Math.sin(yawRad), 0, Math.cos(yawRad)).normalize();
-        Vector right = new Vector(forward.getZ(), 0, -forward.getX()).normalize();
-        Vector up = new Vector(0, 1, 0);
+        Vector forward = new Vector(
+                -Math.sin(y) * Math.cos(p),
+                -Math.sin(p),
+                Math.cos(y) * Math.cos(p));
 
-        float deltaYaw = normalizeAngle(playerYaw - cameraYaw);
-        float limitedPitch = Math.max(-80, Math.min(80, playerPitch));
+        Vector worldUp = new Vector(0, 1, 0);
+        Vector right = worldUp.clone().crossProduct(forward).normalize();
+        Vector up = forward.clone().crossProduct(right).normalize();
 
-        double x = -Math.tan(Math.toRadians(deltaYaw)) * distance;
-        double y = Math.tan(Math.toRadians(-limitedPitch)) * distance;
+        return new Vector[] { forward.normalize(), right, up };
+    }
 
-        Location loc = cameraLoc.clone()
-                .add(forward.multiply(distance))
-                .add(right.multiply(x))
-                .add(up.multiply(y));
+    public static Location getMenuOrigin(Location eyeLoc, float yaw, float pitch, double distance) {
+        Vector[] basis = getCameraBasis(yaw, pitch);
+        return eyeLoc.clone().add(basis[0].clone().multiply(distance));
+    }
+
+    public static Location calculateComponentLocation(Location origin, float yaw, float pitch, double x, double y) {
+        Vector[] basis = getCameraBasis(yaw, pitch);
+
+        Location loc = origin.clone()
+                .add(basis[1].clone().multiply(x))
+                .add(basis[2].clone().multiply(y));
+
+        loc.setYaw(yaw + 180f);
+        loc.setPitch(-pitch);
+
+        return loc;
+    }
+
+    public static Location getCursorLocation(Location origin, float cameraYaw, float cameraPitch,
+            float playerYaw, float playerPitch, double distance) {
+        Vector[] basis = getCameraBasis(cameraYaw, cameraPitch);
+
+        float dYaw = normalizeAngle(playerYaw - cameraYaw);
+        float dPitch = normalizeAngle(playerPitch - cameraPitch);
+
+        double cx = Math.tan(Math.toRadians(dYaw)) * distance;
+        double cy = -Math.tan(Math.toRadians(dPitch)) * distance;
+
+        Location loc = origin.clone()
+                .add(basis[1].clone().multiply(cx))
+                .add(basis[2].clone().multiply(cy));
 
         loc.setYaw(playerYaw + 180f);
         loc.setPitch(-playerPitch);

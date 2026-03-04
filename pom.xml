@@ -92,17 +92,18 @@
                         </goals>
                         <configuration>
                             <relocations>
-                                <relocation>
-                                    <pattern>net.kyori</pattern>
-                                    <shadedPattern>com.fendrixx.aurus.libs.kyori</shadedPattern>
-                                </relocation>
+
                                 <relocation>
                                     <pattern>net.objecthunter</pattern>
                                     <shadedPattern>com.fendrixx.aurus.libs.exp4j</shadedPattern>
                                 </relocation>
                                 <relocation>
-                                    <pattern>com.github.retrooper</pattern>
-                                    <shadedPattern>com.fendrixx.aurus.libs.packetevents</shadedPattern>
+                                    <pattern>com.github.retrooper.packetevents</pattern>
+                                    <shadedPattern>com.fendrixx.aurus.libs.packetevents.api</shadedPattern>
+                                </relocation>
+                                <relocation>
+                                    <pattern>io.github.retrooper.packetevents</pattern>
+                                    <shadedPattern>com.fendrixx.aurus.libs.packetevents.impl</shadedPattern>
                                 </relocation>
                             </relocations>
                         </configuration>

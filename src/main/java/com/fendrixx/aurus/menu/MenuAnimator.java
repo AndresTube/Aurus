@@ -61,7 +61,6 @@ public class MenuAnimator extends BukkitRunnable {
             if (anim.contains("x-formula") || anim.contains("y-formula")) {
                 double rx = anim.contains("x-formula") ? MathUtil.evaluate(anim.getString("x-formula"), ticks) : 0;
                 double ry = anim.contains("y-formula") ? MathUtil.evaluate(anim.getString("y-formula"), ticks) : 0;
-
                 double baseX = conf.getDouble("x", 0.0);
                 double baseY = conf.getDouble("y", 0.0);
 
@@ -76,10 +75,14 @@ public class MenuAnimator extends BukkitRunnable {
             }
         }
 
-        Location newPos = MathUtil.getCursorLocation(menu.getCamera().getEyeLocation(),
-                menu.getCamera().getLocation().getYaw(),
-                player.getLocation().getYaw(), player.getLocation().getPitch(), distance);
-        menu.getCursor().teleport(newPos);
+        Location newCursorPos = MathUtil.getCursorLocation(
+                menu.getMenuOrigin(),
+                menu.getSpawnYaw(),
+                menu.getSpawnPitch(),
+                player.getLocation().getYaw(),
+                player.getLocation().getPitch(),
+                distance);
+        menu.getCursor().teleport(newCursorPos);
 
         updateCounter++;
         if (updateCounter >= updateDelay) {

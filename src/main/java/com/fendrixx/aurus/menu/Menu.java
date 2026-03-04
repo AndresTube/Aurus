@@ -9,7 +9,6 @@ import org.bukkit.Color;
 import org.bukkit.Location;
 import org.bukkit.configuration.ConfigurationSection;
 import org.bukkit.entity.*;
-import org.bukkit.util.Vector;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -25,6 +24,9 @@ public class Menu {
     private MenuAnimator animator;
     private Location oldLocation;
     private double menuDistance;
+    private Location menuOrigin;
+    private float spawnYaw;
+    private float spawnPitch;
     private boolean closed = false;
 
     public Menu(Aurus plugin, Player player) {
@@ -40,14 +42,15 @@ public class Menu {
             return;
 
         this.oldLocation = player.getLocation().clone();
-
         this.menuDistance = section.getDouble("distance", 2.5);
 
         Location savedLocation = player.getLocation().clone();
-        savedLocation.setPitch(0);
-
         camera.spawn();
         player.teleport(savedLocation);
+
+        this.spawnYaw = player.getLocation().getYaw();
+        this.spawnPitch = player.getLocation().getPitch();
+        this.menuOrigin = MathUtil.getMenuOrigin(camera.getEyeLocation(), spawnYaw, spawnPitch, menuDistance);
 
         spawnCursor();
 
@@ -78,13 +81,20 @@ public class Menu {
 
     private void spawnCursor() {
         ConfigurationSection c = plugin.getConfigHandler().getCursorSection();
-        Location loc = player.getEyeLocation().add(player.getLocation().getDirection().multiply(menuDistance));
+        Location loc = menuOrigin.clone();
+        loc.setYaw(spawnYaw + 180f);
+        loc.setPitch(-spawnPitch);
+
         TextDisplay td = (TextDisplay) player.getWorld().spawnEntity(loc, EntityType.TEXT_DISPLAY);
-        td.setBillboard(org.bukkit.entity.Display.Billboard.FIXED);
-        td.setText(ColorUtils.format(c != null ? c.getString("value", "!") : "!"));
+        td.setBillboard(Display.Billboard.FIXED);
+
+        String val = c != null ? c.getString("value", "●") : "●";
+        val = renderer.getActionProcessor().parse(player, val);
+        td.setText(ColorUtils.format(val));
         td.setBackgroundColor(Color.fromARGB(0, 0, 0, 0));
-        renderer.setupDisplay(td, (float) (c != null ? c.getDouble("size", 1.5) : 1.5), c);
+        renderer.setupDisplay(td, (float) (c != null ? c.getDouble("size", 1.0) : 1.0), c);
         this.cursorEntity = td;
+
         for (Player otherPlayer : Bukkit.getOnlinePlayers()) {
             if (!otherPlayer.equals(player)) {
                 otherPlayer.hideEntity(plugin, td);
@@ -93,21 +103,7 @@ public class Menu {
     }
 
     public Location calculateComponentLocation(double x, double y) {
-        Location origin = player.getEyeLocation().clone().add(0, -0.4, 0);
-
-        Vector direction = player.getEyeLocation().getDirection().normalize();
-
-        Vector right = new Vector(-direction.getZ(), 0, direction.getX()).normalize();
-        Vector up = direction.clone().crossProduct(right).multiply(-1).normalize();
-
-        Location center = origin.add(direction.multiply(menuDistance));
-        center.add(right.multiply(x));
-        center.add(up.multiply(y));
-
-        center.setYaw(player.getLocation().getYaw() + 180f);
-        center.setPitch(-player.getLocation().getPitch());
-
-        return center;
+        return MathUtil.calculateComponentLocation(menuOrigin, spawnYaw, spawnPitch, x, y);
     }
 
     public void close() {
@@ -144,5 +140,17 @@ public class Menu {
 
     public List<MenuButton> getButtons() {
         return buttons;
+    }
+
+    public Location getMenuOrigin() {
+        return menuOrigin;
+    }
+
+    public float getSpawnYaw() {
+        return spawnYaw;
+    }
+
+    public float getSpawnPitch() {
+        return spawnPitch;
     }
 }

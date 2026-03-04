@@ -11,10 +11,12 @@ import java.util.List;
 public class ActionProcessor {
     private final Aurus plugin;
 
-    public ActionProcessor(Aurus plugin) { this.plugin = plugin; }
+    public ActionProcessor(Aurus plugin) {
+        this.plugin = plugin;
+    }
 
     public void process(Player player, String action, Runnable closeCallback) {
-        String cmd = action.replace("%player%", player.getName());
+        String cmd = parse(player, action).replace("%player%", player.getName());
 
         if (cmd.equalsIgnoreCase("[close]")) {
             if (closeCallback != null) {
@@ -33,9 +35,11 @@ public class ActionProcessor {
             plugin.adventure().player(player).sendMessage(MiniMessage.miniMessage().deserialize(cmd.substring(10)));
         } else if (cmd.startsWith("[openmenu] ")) {
             String menuId = cmd.substring(11).trim();
-            if (closeCallback != null) closeCallback.run();
+            if (closeCallback != null)
+                closeCallback.run();
             Bukkit.getScheduler().runTaskLater(plugin, () -> {
-                if (player.isOnline()) plugin.getMenuManager().openMenu(player, menuId);
+                if (player.isOnline())
+                    plugin.getMenuManager().openMenu(player, menuId);
             }, 2L);
         } else if (cmd.startsWith("[sound] ")) {
             String[] parts = cmd.substring(8).split(", ");
@@ -44,17 +48,21 @@ public class ActionProcessor {
                 float vol = parts.length > 1 ? Float.parseFloat(parts[1]) : 1.0f;
                 float pitch = parts.length > 2 ? Float.parseFloat(parts[2]) : 1.0f;
                 player.playSound(player.getLocation(), sound, vol, pitch);
-            } catch (Exception ignored) {}
+            } catch (Exception ignored) {
+            }
         }
     }
 
     public void processList(Player player, List<String> actions, Runnable closeCallback) {
-        if (actions == null) return;
-        for (String action : actions) process(player, action, closeCallback);
+        if (actions == null)
+            return;
+        for (String action : actions)
+            process(player, action, closeCallback);
     }
 
     public String parse(Player player, String text) {
-        if (text == null) return "";
+        if (text == null)
+            return "";
         if (Bukkit.getPluginManager().isPluginEnabled("PlaceholderAPI")) {
             return me.clip.placeholderapi.PlaceholderAPI.setPlaceholders(player, text);
         }
