@@ -1,14 +1,17 @@
 package com.fendrixx.aurus.menu;
 
+import com.fendrixx.aurus.packets.FakeEntityFactory;
 import com.fendrixx.aurus.processors.ActionProcessor;
 import com.fendrixx.aurus.util.ColorUtils;
 import org.bukkit.configuration.ConfigurationSection;
-import org.bukkit.entity.Display;
 import org.bukkit.entity.Player;
-import org.bukkit.entity.TextDisplay;
+
+import java.util.UUID;
 
 public class MenuButton {
-    private final Display display;
+    private final int entityId;
+    private final UUID fakeUUID;
+    private final Player viewer;
     private final String rawText;
     private final Runnable onClick;
     private final String type;
@@ -17,10 +20,14 @@ public class MenuButton {
     private final ActionProcessor actionProcessor;
     private final double baseX;
     private final double baseY;
+    private double baseZ = 1.0;
 
-    public MenuButton(Display display, String rawText, Runnable onClick, String type, String variableName,
-            ConfigurationSection config, ActionProcessor actionProcessor, double baseX, double baseY) {
-        this.display = display;
+    public MenuButton(int entityId, UUID fakeUUID, Player viewer, String rawText, Runnable onClick,
+                      String type, String variableName, ConfigurationSection config,
+                      ActionProcessor actionProcessor, double baseX, double baseY) {
+        this.entityId = entityId;
+        this.fakeUUID = fakeUUID;
+        this.viewer = viewer;
         this.rawText = rawText;
         this.onClick = onClick;
         this.type = type;
@@ -32,13 +39,14 @@ public class MenuButton {
     }
 
     public void updateText(Player player) {
-        if (display instanceof TextDisplay td && rawText != null) {
-            td.setText(ColorUtils.format(actionProcessor.parse(player, rawText)));
+        if (rawText != null && ("TEXT".equals(type) || "BUTTON".equals(type) || "INPUT".equals(type))) {
+            FakeEntityFactory.updateTextDisplayText(viewer, entityId,
+                    ColorUtils.format(actionProcessor.parse(player, rawText)));
         }
     }
 
-    public Display getDisplay() {
-        return display;
+    public int getEntityId() {
+        return entityId;
     }
 
     public String getType() {
@@ -59,6 +67,25 @@ public class MenuButton {
 
     public double getBaseY() {
         return baseY;
+    }
+
+    public double getBaseZ() {
+        return baseZ;
+    }
+
+    public void setBaseZ(double baseZ) {
+        this.baseZ = baseZ;
+    }
+
+    public Player getViewer() {
+        return viewer;
+    }
+
+    public void remove() {
+        FakeEntityFactory.destroyEntities(viewer, entityId);
+        if (fakeUUID != null) {
+            FakeEntityFactory.removePlayerInfo(viewer, fakeUUID);
+        }
     }
 
     public void onClick() {

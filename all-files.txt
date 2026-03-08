@@ -1,9 +1,8 @@
-FILE: ./src/main/java/com/fendrixx/aurus/menu/MenuManager.java
+--- FILE: ./src/main/java/com/fendrixx/aurus/menu/MenuManager.java ---
 package com.fendrixx.aurus.menu;
 
 import com.fendrixx.aurus.Aurus;
 import org.bukkit.entity.Player;
-import org.bukkit.scheduler.BukkitRunnable;
 
 import java.util.HashMap;
 import java.util.Map;
@@ -40,6 +39,10 @@ public class MenuManager {
         activeMenus.remove(uuid);
     }
 
+    public Map<UUID, Menu> getActiveMenusMap() {
+        return activeMenus;
+    }
+
     public void closeAll() {
         for (Menu menu : new java.util.ArrayList<>(activeMenus.values())) {
             menu.close();
@@ -48,18 +51,21 @@ public class MenuManager {
     }
 }
 
-FILE: ./src/main/java/com/fendrixx/aurus/menu/MenuButton.java
+--- FILE: ./src/main/java/com/fendrixx/aurus/menu/MenuButton.java ---
 package com.fendrixx.aurus.menu;
 
+import com.fendrixx.aurus.packets.FakeEntityFactory;
 import com.fendrixx.aurus.processors.ActionProcessor;
 import com.fendrixx.aurus.util.ColorUtils;
 import org.bukkit.configuration.ConfigurationSection;
-import org.bukkit.entity.Display;
 import org.bukkit.entity.Player;
-import org.bukkit.entity.TextDisplay;
+
+import java.util.UUID;
 
 public class MenuButton {
-    private final Display display;
+    private final int entityId;
+    private final UUID fakeUUID;
+    private final Player viewer;
     private final String rawText;
     private final Runnable onClick;
     private final String type;
@@ -68,10 +74,14 @@ public class MenuButton {
     private final ActionProcessor actionProcessor;
     private final double baseX;
     private final double baseY;
+    private double baseZ = 1.0;
 
-    public MenuButton(Display display, String rawText, Runnable onClick, String type, String variableName,
-            ConfigurationSection config, ActionProcessor actionProcessor, double baseX, double baseY) {
-        this.display = display;
+    public MenuButton(int entityId, UUID fakeUUID, Player viewer, String rawText, Runnable onClick,
+                      String type, String variableName, ConfigurationSection config,
+                      ActionProcessor actionProcessor, double baseX, double baseY) {
+        this.entityId = entityId;
+        this.fakeUUID = fakeUUID;
+        this.viewer = viewer;
         this.rawText = rawText;
         this.onClick = onClick;
         this.type = type;
@@ -83,13 +93,14 @@ public class MenuButton {
     }
 
     public void updateText(Player player) {
-        if (display instanceof TextDisplay td && rawText != null) {
-            td.setText(ColorUtils.format(actionProcessor.parse(player, rawText)));
+        if (rawText != null && ("TEXT".equals(type) || "BUTTON".equals(type) || "INPUT".equals(type))) {
+            FakeEntityFactory.updateTextDisplayText(viewer, entityId,
+                    ColorUtils.format(actionProcessor.parse(player, rawText)));
         }
     }
 
-    public Display getDisplay() {
-        return display;
+    public int getEntityId() {
+        return entityId;
     }
 
     public String getType() {
@@ -112,127 +123,162 @@ public class MenuButton {
         return baseY;
     }
 
+    public double getBaseZ() {
+        return baseZ;
+    }
+
+    public void setBaseZ(double baseZ) {
+        this.baseZ = baseZ;
+    }
+
+    public Player getViewer() {
+        return viewer;
+    }
+
+    public void remove() {
+        FakeEntityFactory.destroyEntities(viewer, entityId);
+        if (fakeUUID != null) {
+            FakeEntityFactory.removePlayerInfo(viewer, fakeUUID);
+        }
+    }
+
     public void onClick() {
         if (onClick != null)
             onClick.run();
     }
 }
 
-FILE: ./src/main/java/com/fendrixx/aurus/menu/MenuRenderer.java
+
+--- FILE: ./src/main/java/com/fendrixx/aurus/menu/MenuCursor.java ---
 package com.fendrixx.aurus.menu;
 
+import com.fendrixx.aurus.packets.FakeEntityFactory;
 import com.fendrixx.aurus.processors.ActionProcessor;
 import com.fendrixx.aurus.util.ColorUtils;
-import org.bukkit.Color;
 import org.bukkit.Location;
+import org.bukkit.Material;
 import org.bukkit.configuration.ConfigurationSection;
-import org.bukkit.entity.*;
+import org.bukkit.entity.Player;
 import org.bukkit.inventory.ItemStack;
-import org.bukkit.util.Transformation;
-import org.joml.Vector3f;
 
-public class MenuRenderer {
-    private final ActionProcessor actionProcessor;
+public class MenuCursor {
+    private int entityId;
+    private Player viewer;
 
-    public MenuRenderer(ActionProcessor actionProcessor) {
-        this.actionProcessor = actionProcessor;
-    }
+    public void spawn(Player player, Location loc, ConfigurationSection conf, ActionProcessor actionProcessor) {
+        this.viewer = player;
+        String type = conf != null ? conf.getString("type", "TEXT").toUpperCase() : "TEXT";
+        String value = conf != null ? conf.getString("value", "●") : "●";
+        float size = (float) (conf != null ? conf.getDouble("size", 1.0) : 1.0);
 
-    public ActionProcessor getActionProcessor() {
-        return actionProcessor;
-    }
-
-    public MenuButton createComponent(Player player, String type, ConfigurationSection conf, Location loc,
-            double baseX, double baseY, Runnable closeAction) {
-        float size = (float) conf.getDouble("size", 1.0);
-        String rawText = conf.getString("text", "");
-
-        return switch (type) {
-            case "TEXT" -> {
-                TextDisplay td = spawnTextDisplay(loc, player, rawText, conf, size);
-                yield new MenuButton(td, rawText, null, "TEXT", null, conf, actionProcessor, baseX, baseY);
-            }
-            case "BUTTON" -> {
-                TextDisplay td = spawnTextDisplay(loc, player, rawText, conf, size);
-                yield new MenuButton(td, rawText,
-                        () -> actionProcessor.processList(player, conf.getStringList("actions"), closeAction),
-                        "BUTTON", null, conf, actionProcessor, baseX, baseY);
-            }
-            case "INPUT" -> {
-                TextDisplay td = spawnTextDisplay(loc, player, rawText, conf, size);
-                yield new MenuButton(td, rawText,
-                        () -> actionProcessor.processList(player, conf.getStringList("actions"), closeAction),
-                        "INPUT", conf.getString("variable_name"), conf, actionProcessor, baseX, baseY);
-            }
+        switch (type) {
             case "ITEM" -> {
-                ItemDisplay idisp = (ItemDisplay) loc.getWorld().spawnEntity(loc, EntityType.ITEM_DISPLAY);
-                String mat = actionProcessor.parse(player, conf.getString("material", "STONE"));
-                idisp.setItemStack(new ItemStack(org.bukkit.Material.matchMaterial(mat)));
-                setupDisplay(idisp, size, conf);
-                yield new MenuButton(idisp, null, null, "ITEM", null, conf, actionProcessor, baseX, baseY);
+                Material mat = Material.matchMaterial(actionProcessor.parse(player, value));
+                if (mat == null) mat = Material.ARROW;
+                this.entityId = FakeEntityFactory.spawnFakeItemDisplay(player, loc,
+                        new ItemStack(mat), size, 0, 0, 0);
             }
             case "BLOCK" -> {
-                BlockDisplay bd = (BlockDisplay) loc.getWorld().spawnEntity(loc, EntityType.BLOCK_DISPLAY);
-                String mat = actionProcessor.parse(player, conf.getString("material", "STONE"));
-                bd.setBlock(org.bukkit.Material.matchMaterial(mat).createBlockData());
-                setupDisplay(bd, size, conf);
-                yield new MenuButton(bd, null, null, "BLOCK", null, conf, actionProcessor, baseX, baseY);
+                Material mat = Material.matchMaterial(actionProcessor.parse(player, value));
+                if (mat == null) mat = Material.STONE;
+                int blockStateId = com.github.retrooper.packetevents.protocol.world.states.WrappedBlockState
+                        .getByString("minecraft:" + mat.name().toLowerCase()).getGlobalId();
+                this.entityId = FakeEntityFactory.spawnFakeBlockDisplay(player, loc,
+                        blockStateId, size, 0, 0, 0);
             }
-            default -> null;
-        };
-    }
-
-    private TextDisplay spawnTextDisplay(Location loc, Player p, String raw, ConfigurationSection conf, float size) {
-        TextDisplay td = (TextDisplay) loc.getWorld().spawnEntity(loc, EntityType.TEXT_DISPLAY);
-        td.setBillboard(Display.Billboard.FIXED);
-        td.setText(ColorUtils.format(actionProcessor.parse(p, raw)));
-        if (!conf.getBoolean("background", true))
-            td.setBackgroundColor(Color.fromARGB(0, 0, 0, 0));
-        setupDisplay(td, size, conf);
-        return td;
-    }
-
-    public void setupDisplay(Display display, float scale, ConfigurationSection conf) {
-        Transformation trans = display.getTransformation();
-        trans.getScale().set(new Vector3f(scale, scale, scale));
-        if (conf != null && conf.contains("rotation")) {
-            trans.getLeftRotation().rotationXYZ(
-                    (float) Math.toRadians(conf.getDouble("rotation.x")),
-                    (float) Math.toRadians(conf.getDouble("rotation.y")),
-                    (float) Math.toRadians(conf.getDouble("rotation.z")));
+            default -> {
+                String text = ColorUtils.format(actionProcessor.parse(player, value));
+                this.entityId = FakeEntityFactory.spawnFakeTextDisplay(player, loc, text,
+                        0, false, (byte) 0, size, 0, 0, 0);
+            }
         }
-        display.setTransformation(trans);
+    }
+
+    public void teleport(Location loc) {
+        if (viewer != null && viewer.isOnline()) {
+            FakeEntityFactory.teleportEntity(viewer, entityId, loc);
+        }
+    }
+
+    public void remove() {
+        if (viewer != null) {
+            FakeEntityFactory.destroyEntities(viewer, entityId);
+        }
+    }
+
+    public int getEntityId() {
+        return entityId;
     }
 }
 
-FILE: ./src/main/java/com/fendrixx/aurus/menu/MenuAnimator.java
+
+--- FILE: ./src/main/java/com/fendrixx/aurus/menu/MenuAnimator.java ---
 package com.fendrixx.aurus.menu;
 
+import com.fendrixx.aurus.packets.FakeEntityFactory;
 import com.fendrixx.aurus.util.MathUtil;
+import net.objecthunter.exp4j.Expression;
 import org.bukkit.Location;
 import org.bukkit.configuration.ConfigurationSection;
-import org.bukkit.entity.Display;
 import org.bukkit.entity.Player;
 import org.bukkit.scheduler.BukkitRunnable;
-import org.bukkit.util.Transformation;
 
+import java.util.ArrayList;
 import java.util.List;
 
 public class MenuAnimator extends BukkitRunnable {
     private final Menu menu;
     private final Player player;
-    private final List<MenuButton> buttons;
     private final double distance;
     private final int updateDelay;
+    private final List<MenuButton> allButtons;
+    private final List<AnimatedEntry> animatedEntries;
+    private final boolean hasAnimations;
     private double ticks = 0;
     private int updateCounter = 0;
+
+    private record AnimatedEntry(
+            MenuButton button,
+            float baseSize,
+            double baseX, double baseY, double baseZ,
+            Expression scaleExpr,
+            Expression rotExpr,
+            Expression xExpr, Expression yExpr, Expression zExpr,
+            boolean hasTransform, boolean hasPosition
+    ) {}
 
     public MenuAnimator(Menu menu, Player player, List<MenuButton> buttons, double distance, int updateDelay) {
         this.menu = menu;
         this.player = player;
-        this.buttons = buttons;
+        this.allButtons = buttons;
         this.distance = distance;
         this.updateDelay = updateDelay;
+
+        List<AnimatedEntry> entries = new ArrayList<>();
+        for (MenuButton btn : buttons) {
+            ConfigurationSection conf = btn.getConfig();
+            ConfigurationSection anim = conf.getConfigurationSection("animations");
+            if (anim == null) continue;
+
+            Expression scaleExpr = anim.contains("scale-formula") ? MathUtil.compile(anim.getString("scale-formula")) : null;
+            Expression rotExpr = anim.contains("rotation-formula") ? MathUtil.compile(anim.getString("rotation-formula")) : null;
+            Expression xExpr = anim.contains("x-formula") ? MathUtil.compile(anim.getString("x-formula")) : null;
+            Expression yExpr = anim.contains("y-formula") ? MathUtil.compile(anim.getString("y-formula")) : null;
+            Expression zExpr = anim.contains("z-formula") ? MathUtil.compile(anim.getString("z-formula")) : null;
+
+            boolean hasTransform = scaleExpr != null || rotExpr != null;
+            boolean hasPosition = xExpr != null || yExpr != null || zExpr != null;
+
+            if (hasTransform || hasPosition) {
+                entries.add(new AnimatedEntry(btn,
+                        (float) conf.getDouble("size", 1.0),
+                        conf.getDouble("x", 0.0), conf.getDouble("y", 0.0), btn.getBaseZ(),
+                        scaleExpr, rotExpr, xExpr, yExpr, zExpr,
+                        hasTransform, hasPosition));
+            }
+        }
+        this.animatedEntries = entries;
+        this.hasAnimations = !entries.isEmpty();
     }
 
     @Override
@@ -242,65 +288,42 @@ public class MenuAnimator extends BukkitRunnable {
             return;
         }
 
-        ticks += 0.05;
-
-        for (MenuButton btn : buttons) {
-            ConfigurationSection conf = btn.getConfig();
-            ConfigurationSection anim = conf.getConfigurationSection("animations");
-            if (anim == null)
-                continue;
-
-            Display display = btn.getDisplay();
-            Transformation trans = display.getTransformation();
-            boolean changed = false;
-
-            if (anim.contains("scale-formula")) {
-                float s = (float) MathUtil.evaluate(anim.getString("scale-formula"), ticks);
-                trans.getScale().set(s, s, s);
-                changed = true;
-            }
-
-            if (anim.contains("rotation-formula")) {
-                float r = (float) Math.toRadians(MathUtil.evaluate(anim.getString("rotation-formula"), ticks));
-                trans.getLeftRotation().identity().rotateZ(r);
-                changed = true;
-            }
-
-            if (anim.contains("x-formula") || anim.contains("y-formula")) {
-                double rx = anim.contains("x-formula") ? MathUtil.evaluate(anim.getString("x-formula"), ticks) : 0;
-                double ry = anim.contains("y-formula") ? MathUtil.evaluate(anim.getString("y-formula"), ticks) : 0;
-                double baseX = conf.getDouble("x", 0.0);
-                double baseY = conf.getDouble("y", 0.0);
-
-                Location offsetLoc = menu.calculateComponentLocation(baseX + rx, baseY + ry);
-                display.teleport(offsetLoc);
-            }
-
-            if (changed) {
-                display.setInterpolationDuration(1);
-                display.setInterpolationDelay(0);
-                display.setTransformation(trans);
+        if (hasAnimations) {
+            ticks += 0.05;
+            for (AnimatedEntry e : animatedEntries) {
+                if (e.hasPosition) {
+                    double rx = e.xExpr != null ? e.xExpr.setVariable("t", ticks).evaluate() : 0;
+                    double ry = e.yExpr != null ? e.yExpr.setVariable("t", ticks).evaluate() : 0;
+                    double rz = e.zExpr != null ? e.zExpr.setVariable("t", ticks).evaluate() : 0;
+                    Location loc = menu.calculateComponentLocation(e.baseX + rx, e.baseY + ry, e.baseZ + rz);
+                    FakeEntityFactory.teleportEntity(player, e.button.getEntityId(), loc);
+                }
+                if (e.hasTransform) {
+                    float scale = e.scaleExpr != null ? (float) e.scaleExpr.setVariable("t", ticks).evaluate() : e.baseSize;
+                    float rotZ = e.rotExpr != null ? (float) e.rotExpr.setVariable("t", ticks).evaluate() : 0;
+                    FakeEntityFactory.setDisplayTransform(player, e.button.getEntityId(), scale, 0, 0, rotZ);
+                }
             }
         }
 
-        Location newCursorPos = MathUtil.getCursorLocation(
+        Location playerLoc = player.getLocation();
+        Location newCursorPos = menu.getBasis().getCursorLocation(
                 menu.getMenuOrigin(),
-                menu.getSpawnYaw(),
-                menu.getSpawnPitch(),
-                player.getLocation().getYaw(),
-                player.getLocation().getPitch(),
+                playerLoc.getYaw(),
+                playerLoc.getPitch(),
                 distance);
         menu.getCursor().teleport(newCursorPos);
 
         updateCounter++;
         if (updateCounter >= updateDelay) {
-            buttons.forEach(b -> b.updateText(player));
+            allButtons.forEach(b -> b.updateText(player));
             updateCounter = 0;
         }
     }
 }
 
-FILE: ./src/main/java/com/fendrixx/aurus/menu/MenuCamera.java
+
+--- FILE: ./src/main/java/com/fendrixx/aurus/menu/MenuCamera.java ---
 package com.fendrixx.aurus.menu;
 
 import com.github.retrooper.packetevents.PacketEvents;
@@ -310,18 +333,35 @@ import org.bukkit.Location;
 import org.bukkit.entity.EntityType;
 import org.bukkit.entity.Pig;
 import org.bukkit.entity.Player;
+import org.bukkit.plugin.java.JavaPlugin;
 
 public class MenuCamera {
     private final Player player;
     private Pig tripod;
+    private JavaPlugin ownerPlugin;
 
     public MenuCamera(Player player) {
         this.player = player;
     }
 
-    public void spawn() {
+    public void spawn(JavaPlugin plugin, Runnable onReady) {
         Location location = player.getLocation();
+        spawnAt(plugin, location, onReady);
+    }
 
+    public void spawnAt(JavaPlugin plugin, Location location, Runnable onReady) {
+        this.ownerPlugin = plugin;
+        location.getWorld().getChunkAtAsync(location, true).thenAccept(chunk -> {
+            chunk.addPluginChunkTicket(plugin);
+
+            plugin.getServer().getScheduler().runTask(plugin, () -> {
+                doSpawn(location);
+                onReady.run();
+            });
+        });
+    }
+
+    private void doSpawn(Location location) {
         tripod = (Pig) location.getWorld().spawnEntity(location, EntityType.PIG);
         tripod.setInvisible(true);
         tripod.setAI(false);
@@ -331,7 +371,6 @@ public class MenuCamera {
         tripod.setCollidable(false);
 
         PacketEvents.getAPI().getPlayerManager().sendPacket(player, new WrapperPlayServerCamera(tripod.getEntityId()));
-
         PacketEvents.getAPI().getPlayerManager().sendPacket(player,
                 new WrapperPlayServerSetPassengers(tripod.getEntityId(), new int[] { player.getEntityId() }));
     }
@@ -340,7 +379,10 @@ public class MenuCamera {
         PacketEvents.getAPI().getPlayerManager().sendPacket(player, new WrapperPlayServerCamera(player.getEntityId()));
 
         if (tripod != null) {
+            if (ownerPlugin != null)
+                tripod.getLocation().getChunk().removePluginChunkTicket(ownerPlugin);
             tripod.remove();
+            tripod = null;
         }
     }
 
@@ -357,19 +399,16 @@ public class MenuCamera {
     }
 }
 
-
-FILE: ./src/main/java/com/fendrixx/aurus/menu/Menu.java
+--- FILE: ./src/main/java/com/fendrixx/aurus/menu/Menu.java ---
 package com.fendrixx.aurus.menu;
 
 import com.fendrixx.aurus.Aurus;
 import com.fendrixx.aurus.processors.ActionProcessor;
-import com.fendrixx.aurus.util.ColorUtils;
-import com.fendrixx.aurus.util.MathUtil;
+import com.fendrixx.aurus.util.CameraBasis;
 import org.bukkit.Bukkit;
-import org.bukkit.Color;
 import org.bukkit.Location;
 import org.bukkit.configuration.ConfigurationSection;
-import org.bukkit.entity.*;
+import org.bukkit.entity.Player;
 import org.bukkit.potion.PotionEffect;
 import org.bukkit.potion.PotionEffectType;
 
@@ -383,7 +422,7 @@ public class Menu {
     private final MenuRenderer renderer;
     private final List<MenuButton> buttons = new ArrayList<>();
 
-    private Display cursorEntity;
+    private MenuCursor cursor;
     private MenuAnimator animator;
     private Location oldLocation;
     private double menuDistance;
@@ -391,12 +430,14 @@ public class Menu {
     private float spawnYaw;
     private float spawnPitch;
     private boolean closed = false;
+    private boolean couldFlyBefore;
+    private CameraBasis basis;
 
     public Menu(Aurus plugin, Player player) {
         this.plugin = plugin;
         this.player = player;
         this.camera = new MenuCamera(player);
-        this.renderer = new MenuRenderer(new ActionProcessor(plugin));
+        this.renderer = new MenuRenderer(new ActionProcessor(plugin), plugin);
     }
 
     public void open(String menuId) {
@@ -405,15 +446,62 @@ public class Menu {
             return;
 
         this.oldLocation = player.getLocation().clone();
+        this.couldFlyBefore = player.getAllowFlight();
         this.menuDistance = section.getDouble("distance", 2.5);
 
-        Location savedLocation = player.getLocation().clone();
-        camera.spawn();
-        player.teleport(savedLocation);
+        String locationStr = section.getString("location");
+        Location fixedLoc = locationStr != null ? parseLocation(locationStr) : null;
 
-        this.spawnYaw = player.getLocation().getYaw();
-        this.spawnPitch = player.getLocation().getPitch();
-        this.menuOrigin = MathUtil.getMenuOrigin(camera.getEyeLocation(), spawnYaw, spawnPitch, menuDistance);
+        Runnable setupMenu = (fixedLoc != null) ? () -> setupAtLocation(section, fixedLoc) : () -> setupAtPlayer(section);
+
+        if (fixedLoc != null) {
+            fixedLoc.getWorld().getChunkAtAsync(fixedLoc).thenAccept(chunk -> {
+                if (!player.isOnline()) return;
+                Bukkit.getScheduler().runTask(plugin, setupMenu);
+            });
+        } else {
+            setupMenu.run();
+        }
+    }
+
+    private void setupAtPlayer(ConfigurationSection section) {
+        Location savedLocation = player.getLocation().clone();
+        this.spawnYaw = savedLocation.getYaw();
+        this.spawnPitch = savedLocation.getPitch();
+
+        player.setAllowFlight(true);
+
+        camera.spawn(plugin, () -> {
+            player.teleport(savedLocation);
+            finishSetup(section);
+        });
+    }
+
+    private void setupAtLocation(ConfigurationSection section, Location fixedLoc) {
+        this.spawnYaw = fixedLoc.getYaw();
+        this.spawnPitch = fixedLoc.getPitch();
+
+        player.setAllowFlight(true);
+
+        fixedLoc.getChunk().addPluginChunkTicket(plugin);
+
+        player.teleportAsync(fixedLoc).thenAccept(success -> {
+            if (!success || !player.isOnline() || closed) return;
+
+            Bukkit.getScheduler().runTaskLater(plugin, () -> {
+                if (closed || !player.isOnline()) return;
+
+                camera.spawnAt(plugin, fixedLoc, () -> {
+                    player.teleport(fixedLoc);
+                    finishSetup(section);
+                });
+            }, 5L);
+        });
+    }
+
+    private void finishSetup(ConfigurationSection section) {
+        this.basis = new CameraBasis(spawnYaw, spawnPitch);
+        this.menuOrigin = basis.getMenuOrigin(camera.getEyeLocation(), menuDistance);
 
         spawnCursor();
 
@@ -423,18 +511,20 @@ public class Menu {
                 ConfigurationSection c = comps.getConfigurationSection(key);
                 double bx = c.getDouble("x");
                 double by = c.getDouble("y");
-                Location loc = calculateComponentLocation(bx, by);
-                MenuButton btn = renderer.createComponent(player, c.getString("type", "BUTTON").toUpperCase(), c, loc,
-                        bx, by, this::close);
+                double bz = c.getDouble("z", 1.0);
+                Location loc = calculateComponentLocation(bx, by, bz);
+                MenuButton btn = renderer.createComponent(player, c.getString("type", "BUTTON").toUpperCase(), c,
+                        loc, bx, by, this::close);
                 if (btn != null) {
+                    btn.setBaseZ(bz);
                     buttons.add(btn);
-                    for (Player otherPlayer : Bukkit.getOnlinePlayers()) {
-                        if (!otherPlayer.equals(player)) {
-                            otherPlayer.hideEntity(plugin, btn.getDisplay());
-                            otherPlayer.hideEntity(plugin, player);
-                        }
-                    }
                 }
+            }
+        }
+
+        for (Player otherPlayer : Bukkit.getOnlinePlayers()) {
+            if (!otherPlayer.equals(player)) {
+                otherPlayer.hideEntity(plugin, player);
             }
         }
 
@@ -448,30 +538,24 @@ public class Menu {
     }
 
     private void spawnCursor() {
-        ConfigurationSection c = plugin.getConfigHandler().getCursorSection();
+        this.cursor = new MenuCursor();
+
+        ConfigurationSection cursorConf = plugin.getConfigHandler().getCursorSection();
+
         Location loc = menuOrigin.clone();
         loc.setYaw(spawnYaw + 180f);
         loc.setPitch(-spawnPitch);
 
-        TextDisplay td = (TextDisplay) player.getWorld().spawnEntity(loc, EntityType.TEXT_DISPLAY);
-        td.setBillboard(Display.Billboard.FIXED);
-
-        String val = c != null ? c.getString("value", "●") : "●";
-        val = renderer.getActionProcessor().parse(player, val);
-        td.setText(ColorUtils.format(val));
-        td.setBackgroundColor(Color.fromARGB(0, 0, 0, 0));
-        renderer.setupDisplay(td, (float) (c != null ? c.getDouble("size", 1.0) : 1.0), c);
-        this.cursorEntity = td;
-
-        for (Player otherPlayer : Bukkit.getOnlinePlayers()) {
-            if (!otherPlayer.equals(player)) {
-                otherPlayer.hideEntity(plugin, td);
-            }
-        }
+        cursor.spawn(
+                player,
+                loc,
+                cursorConf,
+                renderer.getActionProcessor()
+        );
     }
 
-    public Location calculateComponentLocation(double x, double y) {
-        return MathUtil.calculateComponentLocation(menuOrigin, spawnYaw, spawnPitch, x, y);
+    public Location calculateComponentLocation(double x, double y, double z) {
+        return basis.calculateComponentLocation(menuOrigin, x, y, z);
     }
 
     public void close() {
@@ -484,12 +568,16 @@ public class Menu {
         if (animator != null)
             animator.cancel();
         camera.remove();
-        if (cursorEntity != null)
-            cursorEntity.remove();
-        buttons.forEach(b -> b.getDisplay().remove());
+        if (cursor != null)
+            cursor.remove();
+        for (MenuButton btn : buttons) {
+            btn.remove();
+        }
         buttons.clear();
         plugin.getMenuManager().removeMenu(player.getUniqueId());
 
+        player.setAllowFlight(couldFlyBefore);
+        player.setFlying(false);
         player.showEntity(plugin, player);
         player.removePotionEffect(PotionEffectType.INVISIBILITY);
         for (Player otherPlayer : Bukkit.getOnlinePlayers()) {
@@ -499,18 +587,16 @@ public class Menu {
         }
     }
 
-    public void updateVisuals() {
-        for (MenuButton btn : buttons) {
-            btn.updateText(player);
-        }
+    public CameraBasis getBasis() {
+        return basis;
     }
 
     public MenuCamera getCamera() {
         return camera;
     }
 
-    public Display getCursor() {
-        return cursorEntity;
+    public MenuCursor getCursor() {
+        return cursor;
     }
 
     public List<MenuButton> getButtons() {
@@ -532,10 +618,150 @@ public class Menu {
     public double getMenuDistance() {
         return menuDistance;
     }
+
+    private Location parseLocation(String str) {
+        try {
+            String[] parts = str.split(",");
+            org.bukkit.World world = Bukkit.getWorld(parts[0].trim());
+            if (world == null) return null;
+            double x = Double.parseDouble(parts[1].trim());
+            double y = Double.parseDouble(parts[2].trim());
+            double z = Double.parseDouble(parts[3].trim());
+            float yaw = parts.length > 4 ? Float.parseFloat(parts[4].trim()) : 0f;
+            float pitch = parts.length > 5 ? Float.parseFloat(parts[5].trim()) : 0f;
+            return new Location(world, x, y, z, yaw, pitch);
+        } catch (Exception e) {
+            return null;
+        }
+    }
 }
 
 
-FILE: ./src/main/java/com/fendrixx/aurus/listeners/MoveListener.java
+--- FILE: ./src/main/java/com/fendrixx/aurus/menu/MenuRenderer.java ---
+package com.fendrixx.aurus.menu;
+
+import com.fendrixx.aurus.packets.FakeEntityFactory;
+import com.fendrixx.aurus.packets.SkinFetcher;
+import com.fendrixx.aurus.processors.ActionProcessor;
+import com.fendrixx.aurus.util.ColorUtils;
+import org.bukkit.Bukkit;
+import org.bukkit.Location;
+import org.bukkit.Material;
+import org.bukkit.configuration.ConfigurationSection;
+import org.bukkit.entity.Player;
+import org.bukkit.inventory.ItemStack;
+import org.bukkit.inventory.meta.ItemMeta;
+import org.bukkit.plugin.java.JavaPlugin;
+
+import java.util.UUID;
+
+public class MenuRenderer {
+    private final ActionProcessor actionProcessor;
+    private final JavaPlugin plugin;
+
+    public MenuRenderer(ActionProcessor actionProcessor, JavaPlugin plugin) {
+        this.actionProcessor = actionProcessor;
+        this.plugin = plugin;
+    }
+
+    public ActionProcessor getActionProcessor() {
+        return actionProcessor;
+    }
+
+    public MenuButton createComponent(Player player, String type, ConfigurationSection conf, Location loc,
+            double baseX, double baseY, Runnable closeAction) {
+        float size = (float) conf.getDouble("size", 1.0);
+        String rawText = conf.getString("text", "");
+        float rotX = (float) conf.getDouble("rotation.x", 0);
+        float rotY = (float) conf.getDouble("rotation.y", 0);
+        float rotZ = (float) conf.getDouble("rotation.z", 0);
+
+        return switch (type) {
+            case "TEXT" -> {
+                String text = ColorUtils.format(actionProcessor.parse(player, rawText));
+                int bgColor = conf.getBoolean("background", true) ? 0x40000000 : 0;
+                boolean shadow = conf.getBoolean("shadow", false);
+                int entityId = FakeEntityFactory.spawnFakeTextDisplay(player, loc, text,
+                        bgColor, shadow, (byte) 0, size, rotX, rotY, rotZ);
+                yield new MenuButton(entityId, null, player, rawText, null, "TEXT", null, conf, actionProcessor, baseX, baseY);
+            }
+            case "BUTTON" -> {
+                String text = ColorUtils.format(actionProcessor.parse(player, rawText));
+                int bgColor = conf.getBoolean("background", true) ? 0x40000000 : 0;
+                boolean shadow = conf.getBoolean("shadow", false);
+                int entityId = FakeEntityFactory.spawnFakeTextDisplay(player, loc, text,
+                        bgColor, shadow, (byte) 0, size, rotX, rotY, rotZ);
+                yield new MenuButton(entityId, null, player, rawText,
+                        () -> actionProcessor.processList(player, conf.getStringList("actions"), closeAction),
+                        "BUTTON", null, conf, actionProcessor, baseX, baseY);
+            }
+            case "INPUT" -> {
+                String text = ColorUtils.format(actionProcessor.parse(player, rawText));
+                int bgColor = conf.getBoolean("background", true) ? 0x40000000 : 0;
+                boolean shadow = conf.getBoolean("shadow", false);
+                int entityId = FakeEntityFactory.spawnFakeTextDisplay(player, loc, text,
+                        bgColor, shadow, (byte) 0, size, rotX, rotY, rotZ);
+                yield new MenuButton(entityId, null, player, rawText,
+                        () -> actionProcessor.processList(player, conf.getStringList("actions"), closeAction),
+                        "INPUT", conf.getString("variable_name"), conf, actionProcessor, baseX, baseY);
+            }
+            case "ITEM" -> {
+                String mat = actionProcessor.parse(player, conf.getString("material", "STONE"));
+                ItemStack item = new ItemStack(Material.matchMaterial(mat));
+                if (conf.contains("model-id")) {
+                    ItemMeta meta = item.getItemMeta();
+                    meta.setCustomModelData(conf.getInt("model-id"));
+                    item.setItemMeta(meta);
+                }
+                int entityId = FakeEntityFactory.spawnFakeItemDisplay(player, loc, item, size, rotX, rotY, rotZ);
+                yield new MenuButton(entityId, null, player, null, null, "ITEM", null, conf, actionProcessor, baseX, baseY);
+            }
+            case "BLOCK" -> {
+                String mat = actionProcessor.parse(player, conf.getString("material", "STONE"));
+                int blockStateId = com.github.retrooper.packetevents.protocol.world.states.WrappedBlockState
+                        .getByString("minecraft:" + mat.toLowerCase()).getGlobalId();
+                int entityId = FakeEntityFactory.spawnFakeBlockDisplay(player, loc, blockStateId, size, rotX, rotY, rotZ);
+                yield new MenuButton(entityId, null, player, null, null, "BLOCK", null, conf, actionProcessor, baseX, baseY);
+            }
+            case "ENTITY" -> {
+                String entityName = conf.getString("entity", "ZOMBIE");
+                float headYawRot = (float) conf.getDouble("rotation.x-head", 0);
+                float headPitchRot = (float) conf.getDouble("rotation.y-head", 0);
+                int entityId = FakeEntityFactory.nextEntityId();
+                FakeEntityFactory.spawnFakeEntity(player, entityId, loc, entityName);
+                FakeEntityFactory.setScale(player, entityId, size);
+                if (rotX != 0 || headPitchRot != 0 || headYawRot != 0)
+                    FakeEntityFactory.rotateEntityFull(player, entityId, rotX, headPitchRot, headYawRot != 0 ? headYawRot : rotX);
+                yield new MenuButton(entityId, null, player, null, null, "ENTITY", null, conf, actionProcessor, baseX, baseY);
+            }
+            case "PLAYER" -> {
+                String skinTarget = actionProcessor.parse(player, conf.getString("skin", player.getName()));
+                String nametag = actionProcessor.parse(player, conf.getString("nametag", ""));
+                float headYawRot = (float) conf.getDouble("rotation.x-head", 0);
+                float headPitchRot = (float) conf.getDouble("rotation.y-head", 0);
+                int entityId = FakeEntityFactory.nextEntityId();
+                UUID fakeUUID = UUID.randomUUID();
+                float capturedRotX = rotX;
+                float capturedHeadYaw = headYawRot;
+                float capturedHeadPitch = headPitchRot;
+                SkinFetcher.fetchAsync(skinTarget).thenAccept(skin ->
+                    Bukkit.getScheduler().runTask(plugin, () -> {
+                        if (!player.isOnline()) return;
+                        FakeEntityFactory.spawnFakePlayer(player, entityId, fakeUUID, loc, skin, nametag);
+                        FakeEntityFactory.setScale(player, entityId, size);
+                        if (capturedRotX != 0 || capturedHeadPitch != 0 || capturedHeadYaw != 0)
+                            FakeEntityFactory.rotateEntityFull(player, entityId, capturedRotX, capturedHeadPitch, capturedHeadYaw != 0 ? capturedHeadYaw : capturedRotX);
+                    })
+                );
+                yield new MenuButton(entityId, fakeUUID, player, null, null, "PLAYER", null, conf, actionProcessor, baseX, baseY);
+            }
+            default -> null;
+        };
+    }
+}
+
+
+--- FILE: ./src/main/java/com/fendrixx/aurus/listeners/MoveListener.java ---
 package com.fendrixx.aurus.listeners;
 
 import com.fendrixx.aurus.Aurus;
@@ -585,14 +811,13 @@ public class MoveListener implements Listener {
     }
 }
 
-FILE: ./src/main/java/com/fendrixx/aurus/listeners/InteractionListener.java
+--- FILE: ./src/main/java/com/fendrixx/aurus/listeners/InteractionListener.java ---
 package com.fendrixx.aurus.listeners;
 
 import com.fendrixx.aurus.Aurus;
 import com.fendrixx.aurus.menu.Menu;
 import com.fendrixx.aurus.menu.MenuButton;
 import com.fendrixx.aurus.util.MathUtil;
-import org.bukkit.Sound;
 import org.bukkit.entity.Player;
 import org.bukkit.event.EventHandler;
 import org.bukkit.event.Listener;
@@ -667,11 +892,25 @@ public class InteractionListener implements Listener {
             double d2 = Math.sqrt(dx * dx + dy * dy);
 
             if (d2 < hitRadius) {
+                if (plugin.getDebugManager().isEnabled(player.getUniqueId())) {
+                    plugin.getDebugManager().log(player.getName() + " clicked [" + btn.getType() + "] at (" +
+                            btn.getBaseX() + ", " + btn.getBaseY() + ") actions=" +
+                            btn.getConfig().getStringList("actions"));
+                }
                 if ("INPUT".equalsIgnoreCase(btn.getType())) {
-                    plugin.getInputProcessor().startInput(player, btn.getVariableName());
+                    plugin.getInputProcessor().startInput(player, btn.getVariableName(),
+                            btn.getConfig().getString("fallback-message"));
+                    if (plugin.getDebugManager().isEnabled(player.getUniqueId())) {
+                        plugin.getDebugManager().log("  INPUT variable=" + btn.getVariableName());
+                    }
                 }
                 btn.onClick();
-                player.playSound(player.getLocation(), Sound.UI_BUTTON_CLICK, 0.6f, 1.2f);
+                try {
+                    String clicksound = btn.getConfig().getString("sound", "minecraft:ui.button.click");
+                    if (!clicksound.contains(":")) clicksound = "minecraft:" + clicksound;
+                    player.playSound(player.getLocation(), clicksound, 0.6f, 1.2f);
+                } catch (Exception ignored) {
+                }
                 break;
             }
         }
@@ -684,7 +923,7 @@ public class InteractionListener implements Listener {
 }
 
 
-FILE: ./src/main/java/com/fendrixx/aurus/util/ColorUtils.java
+--- FILE: ./src/main/java/com/fendrixx/aurus/util/ColorUtils.java ---
 package com.fendrixx.aurus.util;
 
 import net.kyori.adventure.text.Component;
@@ -693,8 +932,7 @@ import net.kyori.adventure.text.minimessage.MiniMessage;
 import net.kyori.adventure.text.serializer.legacy.LegacyComponentSerializer;
 import org.jetbrains.annotations.NotNull;
 
-import java.util.List;
-import java.util.stream.Collectors;
+import java.util.Map;
 
 public class ColorUtils {
 
@@ -706,79 +944,157 @@ public class ColorUtils {
             .character('§')
             .build();
 
+    private static final Map<Character, String> LEGACY_TO_MINI = Map.ofEntries(
+            Map.entry('0', "<black>"),
+            Map.entry('1', "<dark_blue>"),
+            Map.entry('2', "<dark_green>"),
+            Map.entry('3', "<dark_aqua>"),
+            Map.entry('4', "<dark_red>"),
+            Map.entry('5', "<dark_purple>"),
+            Map.entry('6', "<gold>"),
+            Map.entry('7', "<gray>"),
+            Map.entry('8', "<dark_gray>"),
+            Map.entry('9', "<blue>"),
+            Map.entry('a', "<green>"),
+            Map.entry('b', "<aqua>"),
+            Map.entry('c', "<red>"),
+            Map.entry('d', "<light_purple>"),
+            Map.entry('e', "<yellow>"),
+            Map.entry('f', "<white>"),
+            Map.entry('r', "<reset>"),
+            Map.entry('l', "<bold>"),
+            Map.entry('o', "<italic>"),
+            Map.entry('n', "<underlined>"),
+            Map.entry('m', "<strikethrough>"),
+            Map.entry('k', "<obfuscated>"));
+
+    private static String legacyToMini(@NotNull String text) {
+        StringBuilder sb = new StringBuilder();
+        for (int i = 0; i < text.length(); i++) {
+            char c = text.charAt(i);
+            if ((c == '§' || c == '&') && i + 1 < text.length()) {
+                char code = Character.toLowerCase(text.charAt(i + 1));
+                String mini = LEGACY_TO_MINI.get(code);
+                if (mini != null) {
+                    sb.append(mini);
+                    i++;
+                    continue;
+                }
+            }
+            sb.append(c);
+        }
+        return sb.toString();
+    }
+
     @NotNull
     public static String format(@NotNull String message) {
         if (message.isEmpty())
             return message;
 
-        Component component = MINI_MESSAGE.deserialize(message)
+        String processed = legacyToMini(message);
+
+        Component component = MINI_MESSAGE.deserialize(processed)
                 .decoration(TextDecoration.ITALIC, TextDecoration.State.FALSE);
 
         return SERIALIZER.serialize(component);
     }
 }
 
-FILE: ./src/main/java/com/fendrixx/aurus/util/MathUtil.java
+--- FILE: ./src/main/java/com/fendrixx/aurus/util/CameraBasis.java ---
 package com.fendrixx.aurus.util;
 
 import org.bukkit.Location;
-import org.bukkit.util.Vector;
 
-public class MathUtil {
+public class CameraBasis {
+    public final double fx, fy, fz;
+    public final double rx, ry, rz;
+    public final double ux, uy, uz;
+    private final float yaw, pitch;
 
-    public static Vector[] getCameraBasis(float yaw, float pitch) {
+    public CameraBasis(float yaw, float pitch) {
+        this.yaw = yaw;
+        this.pitch = pitch;
+
         double y = Math.toRadians(yaw);
         double p = Math.toRadians(pitch);
 
-        Vector forward = new Vector(
-                -Math.sin(y) * Math.cos(p),
-                -Math.sin(p),
-                Math.cos(y) * Math.cos(p)).normalize();
+        double sinY = Math.sin(y);
+        double cosY = Math.cos(y);
+        double sinP = Math.sin(p);
+        double cosP = Math.cos(p);
 
-        Vector worldUp = new Vector(0, 1, 0);
-        Vector right = forward.clone().crossProduct(worldUp).normalize();
-        Vector up = right.clone().crossProduct(forward).normalize();
+        double fxr = -sinY * cosP;
+        double fyr = -sinP;
+        double fzr = cosY * cosP;
+        double fLen = Math.sqrt(fxr * fxr + fyr * fyr + fzr * fzr);
+        this.fx = fxr / fLen;
+        this.fy = fyr / fLen;
+        this.fz = fzr / fLen;
 
-        return new Vector[] { forward, right, up };
+        double rxr = -this.fz;
+        double rzr = this.fx;
+        double rLen = Math.sqrt(rxr * rxr + rzr * rzr);
+        this.rx = rxr / rLen;
+        this.ry = 0;
+        this.rz = rzr / rLen;
+
+        double uxr = this.ry * this.fz - this.rz * this.fy;
+        double uyr = this.rz * this.fx - this.rx * this.fz;
+        double uzr = this.rx * this.fy - this.ry * this.fx;
+        double uLen = Math.sqrt(uxr * uxr + uyr * uyr + uzr * uzr);
+        this.ux = uxr / uLen;
+        this.uy = uyr / uLen;
+        this.uz = uzr / uLen;
     }
 
-    public static Location getMenuOrigin(Location eyeLoc, float yaw, float pitch, double distance) {
-        Vector[] basis = getCameraBasis(yaw, pitch);
-        return eyeLoc.clone().add(basis[0].clone().multiply(distance));
+    public Location getMenuOrigin(Location eyeLoc, double distance) {
+        return new Location(
+                eyeLoc.getWorld(),
+                eyeLoc.getX() + fx * distance,
+                eyeLoc.getY() + fy * distance,
+                eyeLoc.getZ() + fz * distance);
     }
 
-    public static Location calculateComponentLocation(Location origin, float yaw, float pitch, double x, double y) {
-        Vector[] basis = getCameraBasis(yaw, pitch);
-
-        Location loc = origin.clone()
-                .add(basis[1].clone().multiply(x))
-                .add(basis[2].clone().multiply(y));
-
-        loc.setYaw(yaw + 180f);
-        loc.setPitch(-pitch);
-
-        return loc;
+    public Location calculateComponentLocation(Location origin, double x, double y, double z) {
+        double dz = z - 1.0;
+        return new Location(
+                origin.getWorld(),
+                origin.getX() + fx * dz + rx * x + ux * y,
+                origin.getY() + fy * dz + ry * x + uy * y,
+                origin.getZ() + fz * dz + rz * x + uz * y,
+                yaw + 180f,
+                -pitch);
     }
 
-    public static Location getCursorLocation(Location origin, float cameraYaw, float cameraPitch,
-            float playerYaw, float playerPitch, double distance) {
-        Vector[] basis = getCameraBasis(cameraYaw, cameraPitch);
-
-        float dYaw = normalizeAngle(playerYaw - cameraYaw);
-        float dPitch = normalizeAngle(playerPitch - cameraPitch);
+    public Location getCursorLocation(Location origin, float playerYaw, float playerPitch, double distance) {
+        float dYaw = MathUtil.normalizeAngle(playerYaw - yaw);
+        float dPitch = MathUtil.normalizeAngle(playerPitch - pitch);
 
         double cx = Math.tan(Math.toRadians(dYaw)) * distance;
         double cy = -Math.tan(Math.toRadians(dPitch)) * distance;
 
-        Location loc = origin.clone()
-                .add(basis[1].clone().multiply(cx))
-                .add(basis[2].clone().multiply(cy));
-
-        loc.setYaw(playerYaw + 180f);
-        loc.setPitch(-playerPitch);
-
-        return loc;
+        return new Location(
+                origin.getWorld(),
+                origin.getX() + rx * cx + ux * cy,
+                origin.getY() + ry * cx + uy * cy,
+                origin.getZ() + rz * cx + uz * cy,
+                playerYaw + 180f,
+                -playerPitch);
     }
+}
+
+
+--- FILE: ./src/main/java/com/fendrixx/aurus/util/MathUtil.java ---
+package com.fendrixx.aurus.util;
+
+import net.objecthunter.exp4j.Expression;
+import net.objecthunter.exp4j.ExpressionBuilder;
+
+import java.util.concurrent.ConcurrentHashMap;
+
+public class MathUtil {
+
+    private static final ConcurrentHashMap<String, Expression> EXPRESSION_CACHE = new ConcurrentHashMap<>();
 
     public static float normalizeAngle(float angle) {
         while (angle <= -180)
@@ -788,122 +1104,118 @@ public class MathUtil {
         return angle;
     }
 
+    public static Expression compile(String formula) {
+        return EXPRESSION_CACHE.computeIfAbsent(formula, f ->
+                new ExpressionBuilder(f).variable("t").build());
+    }
+
     public static double evaluate(String formula, double t) {
         try {
-            return new net.objecthunter.exp4j.ExpressionBuilder(formula)
-                    .variable("t")
-                    .build()
-                    .setVariable("t", t)
-                    .evaluate();
+            return compile(formula).setVariable("t", t).evaluate();
         } catch (Exception e) {
             return 0;
         }
     }
 }
 
-FILE: ./src/main/java/com/fendrixx/aurus/commands/AurusCommand.java
+
+--- FILE: ./src/main/java/com/fendrixx/aurus/commands/AurusCommand.java ---
 package com.fendrixx.aurus.commands;
 
 import com.fendrixx.aurus.Aurus;
+import com.fendrixx.aurus.util.ColorUtils;
+import revxrsal.commands.annotation.Command;
+import revxrsal.commands.annotation.Optional;
+import revxrsal.commands.bukkit.actor.BukkitCommandActor;
+import revxrsal.commands.annotation.Subcommand;
+import revxrsal.commands.bukkit.annotation.CommandPermission;
 import net.kyori.adventure.text.minimessage.MiniMessage;
-import org.bukkit.command.Command;
-import org.bukkit.command.CommandExecutor;
-import org.bukkit.command.CommandSender;
-import org.bukkit.command.TabCompleter;
 import org.bukkit.entity.Player;
-import org.jetbrains.annotations.NotNull;
 
-import java.util.ArrayList;
-import java.util.List;
+@Command("aurus")
+public class AurusCommand {
 
-public class AurusCommand implements CommandExecutor, TabCompleter {
+    private static final MiniMessage MM = MiniMessage.miniMessage();
+    private static final String PREFIX = "<dark_gray>[<gradient:dark_purple:yellow> Aurus </gradient><dark_gray>] ";
+
     private final Aurus plugin;
-    private final MiniMessage mm = MiniMessage.miniMessage();
-    private final String prefix = "<dark_gray>[<gradient:dark_purple:yellow> Aurus </gradient><dark_gray>] ";
 
     public AurusCommand(Aurus plugin) {
         this.plugin = plugin;
     }
 
-    @Override
-    public boolean onCommand(@NotNull CommandSender sender, @NotNull Command command, @NotNull String label,
-            String[] args) {
-        if (!(sender instanceof Player player))
-            return true;
-
-        if (!player.hasPermission("aurus.admin")) {
-            plugin.adventure().player(player).sendMessage(
-                    mm.deserialize(prefix + "<dark_gray>[<red>✘<dark_gray>] <red>You do not have permission."));
-            return true;
-        }
-
-        if (args.length > 0) {
-            if (args[0].equalsIgnoreCase("open")) {
-                if (args.length < 2) {
-                    plugin.adventure().player(player).sendMessage(mm.deserialize(
-                            prefix + "<dark_gray>[<yellow>?<dark_gray>] <gray>Usage: /aurus open <menu_id>"));
-                    return true;
-                }
-
-                String menuId = args[1];
-                if (plugin.getConfigHandler().getMenuSection(menuId) == null) {
-                    plugin.adventure().player(player).sendMessage(mm.deserialize(prefix
-                            + "<dark_gray>[<red>✘<dark_gray>] <red>Menu <yellow>" + menuId + "</yellow> not found."));
-                    return true;
-                }
-
-                plugin.getMenuManager().openMenu(player, menuId);
-                return true;
-            }
-
-            if (args[0].equalsIgnoreCase("reload")) {
-                plugin.getMenuManager().closeAll();
-                plugin.getConfigHandler().reload();
-                plugin.adventure().player(player).sendMessage(mm.deserialize(
-                        prefix + "<dark_gray>[<green>✔<dark_gray>] <green>Configuration and menus reloaded."));
-                return true;
-            }
-
-            if (args[0].equalsIgnoreCase("close")) {
-                if (plugin.getMenuManager().getActiveMenu(player.getUniqueId()) != null) {
-                    plugin.getMenuManager().closeMenu(player);
-                    plugin.adventure().player(player).sendMessage(
-                            mm.deserialize(prefix + "<dark_gray>[<green>✔<dark_gray>] <green>Menu closed."));
-                } else {
-                    plugin.adventure().player(player).sendMessage(mm.deserialize(
-                            prefix + "<dark_gray>[<yellow>!<dark_gray>] <red>You don't have an active menu."));
-                }
-                return true;
-            }
-        }
-
-        plugin.adventure().player(player).sendMessage(mm.deserialize(
-                prefix + "<dark_gray>[<yellow>?<dark_gray>] <gray>Available commands: <white>open, close, reload"));
-        return true;
+    @Command("aurus")
+    public void defaultCommand(BukkitCommandActor actor) {
+        actor.reply(MM.deserialize(PREFIX + "<dark_gray>[<yellow>?<dark_gray>] <gray>Available commands: <white>open, close, reload, debug"));
     }
 
-    @Override
-    public List<String> onTabComplete(@NotNull CommandSender sender, @NotNull Command command, @NotNull String alias,
-            String[] args) {
-        List<String> suggestions = new ArrayList<>();
-        if (args.length == 1) {
-            suggestions.addAll(List.of("open", "reload", "close"));
-        } else if (args.length == 2 && args[0].equalsIgnoreCase("open")) {
-            suggestions.addAll(plugin.getConfigHandler().getMenuKeys());
+    @Subcommand("open")
+    @CommandPermission("aurus.admin")
+    public void openMenu(BukkitCommandActor actor, String menuId, @Optional Player target) {
+        if (!actor.isPlayer()) return;
+        Player sender = actor.asPlayer();
+
+        if (plugin.getConfigHandler().getMenuSection(menuId) == null) {
+            actor.reply(MM.deserialize(PREFIX + "<dark_gray>[<red>✘<dark_gray>] <red>Menu <yellow>" + menuId + "</yellow> not found."));
+            return;
         }
 
-        String lastArg = args[args.length - 1].toLowerCase();
-        return suggestions.stream().filter(s -> s.toLowerCase().startsWith(lastArg)).toList();
+        Player targetPlayer = (target != null) ? target : sender;
+        plugin.getMenuManager().openMenu(targetPlayer, menuId);
+
+        if (!targetPlayer.equals(sender)) {
+            actor.reply(MM.deserialize(PREFIX + "<dark_gray>[<green>✔<dark_gray>] <green>Opened <yellow>" + menuId + "</yellow> for <yellow>" + targetPlayer.getName() + "</yellow>."));
+        }
+    }
+
+    @Subcommand("reload")
+    @CommandPermission("aurus.admin")
+    public void reload(BukkitCommandActor actor) {
+        plugin.getMenuManager().closeAll();
+        plugin.getConfigHandler().reload();
+        actor.reply(MM.deserialize(PREFIX + "<dark_gray>[<green>✔<dark_gray>] <green>Configuration and menus reloaded."));
+    }
+
+    @Subcommand("close")
+    @CommandPermission("aurus.admin")
+    public void closeMenu(BukkitCommandActor actor, @Optional Player target) {
+        if (!actor.isPlayer()) return;
+        Player sender = actor.asPlayer();
+        Player targetPlayer = (target != null) ? target : sender;
+
+        if (plugin.getMenuManager().getActiveMenu(targetPlayer.getUniqueId()) != null) {
+            plugin.getMenuManager().closeMenu(targetPlayer);
+            actor.reply(MM.deserialize(PREFIX + "<dark_gray>[<green>✔<dark_gray>] <green>Menu closed for <yellow>" + targetPlayer.getName() + "</yellow>."));
+        } else {
+            actor.reply(MM.deserialize(PREFIX + "<dark_gray>[<yellow>!<dark_gray>] <red>No active menu found."));
+        }
+    }
+
+    @Subcommand("debug")
+    @CommandPermission("aurus.admin")
+    public void toggleDebug(BukkitCommandActor actor) {
+        if (!actor.isPlayer()) {
+            actor.reply(ColorUtils.format(PREFIX + "This command only can be used by players"));
+            return;
+        }
+
+        Player player = actor.asPlayer();
+        boolean nowEnabled = plugin.getDebugManager().toggle(player.getUniqueId());
+
+        if (nowEnabled) {
+            actor.reply(MM.deserialize(PREFIX + "<dark_gray>[<aqua>⚙<dark_gray>] <green>Debug enabled"));
+        } else {
+            actor.reply(MM.deserialize(PREFIX + "<dark_gray>[<aqua>⚙<dark_gray>] <red>Debug disabled"));
+        }
     }
 }
 
-FILE: ./src/main/java/com/fendrixx/aurus/config/ConfigHandler.java
+--- FILE: ./src/main/java/com/fendrixx/aurus/config/ConfigHandler.java ---
 package com.fendrixx.aurus.config;
 
 import com.fendrixx.aurus.Aurus;
 import com.fendrixx.aurus.util.ColorUtils;
 import org.bukkit.Bukkit;
-import org.bukkit.Location;
 import org.bukkit.configuration.ConfigurationSection;
 import org.bukkit.configuration.file.FileConfiguration;
 import org.bukkit.configuration.file.YamlConfiguration;
@@ -913,8 +1225,6 @@ import java.util.HashMap;
 import java.util.HashSet;
 import java.util.Map;
 import java.util.Set;
-import java.util.logging.Level;
-
 public class ConfigHandler {
     private final Aurus plugin;
     private FileConfiguration config;
@@ -925,6 +1235,7 @@ public class ConfigHandler {
         this.plugin = plugin;
         loadConfig();
         loadMenus();
+        checkScaleSupport();
     }
 
     public void loadConfig() {
@@ -1011,19 +1322,120 @@ public class ConfigHandler {
         return config != null ? config.getConfigurationSection("cursor") : null;
     }
 
+    public boolean deleteMenu(String menuId) {
+        File folder = new File(plugin.getDataFolder(), "menus");
+        File file = new File(folder, menuId + ".yml");
+        if (file.exists() && file.delete()) {
+            menus.remove(menuId);
+            return true;
+        }
+        return false;
+    }
+
     public void reload() {
         loadConfig();
         loadMenus();
+        checkScaleSupport();
+    }
+
+    private void checkScaleSupport() {
+        if (com.fendrixx.aurus.packets.FakeEntityFactory.supportsScale()) return;
+        for (FileConfiguration menuFile : menus.values()) {
+            for (String menuKey : menuFile.getKeys(false)) {
+                ConfigurationSection comps = menuFile.getConfigurationSection(menuKey + ".components");
+                if (comps == null) continue;
+                for (String compKey : comps.getKeys(false)) {
+                    ConfigurationSection c = comps.getConfigurationSection(compKey);
+                    String type = c.getString("type", "BUTTON").toUpperCase();
+                    if (("ENTITY".equals(type) || "PLAYER".equals(type)) && c.getDouble("size", 1.0) != 1.0) {
+                        Bukkit.getConsoleSender().sendMessage(ColorUtils.format(
+                                prefix + "<dark_gray>[<yellow>!<dark_gray>] <yellow>Component <white>" + compKey +
+                                "</white> in <white>" + menuKey + "</white> uses size on " + type +
+                                " but server is below 1.20.5 — size will be ignored."));
+                    }
+                }
+            }
+        }
     }
 }
 
-FILE: ./src/main/java/com/fendrixx/aurus/processors/ActionProcessor.java
+--- FILE: ./src/main/java/com/fendrixx/aurus/processors/InputProcessor.java ---
+package com.fendrixx.aurus.processors;
+
+import com.fendrixx.aurus.Aurus;
+import com.fendrixx.aurus.debug.DebugManager;
+import com.fendrixx.aurus.util.ColorUtils;
+import org.bukkit.entity.Player;
+import org.bukkit.event.EventHandler;
+import org.bukkit.event.Listener;
+import org.bukkit.event.player.AsyncPlayerChatEvent;
+
+import java.util.HashMap;
+import java.util.Map;
+import java.util.UUID;
+import java.util.concurrent.ConcurrentHashMap;
+
+public class InputProcessor implements Listener {
+    private final Aurus plugin;
+    private final Map<UUID, String> playersEditing = new ConcurrentHashMap<>();
+    private final Map<String, String> savedValues = new ConcurrentHashMap<>();
+
+    public InputProcessor(Aurus plugin) {
+        this.plugin = plugin;
+    }
+
+    public void startInput(Player player, String variableName, String fallbackMessage) {
+        playersEditing.put(player.getUniqueId(), variableName);
+        if (fallbackMessage != null && !fallbackMessage.isEmpty()) {
+            player.sendMessage(ColorUtils.format(fallbackMessage));
+        } else {
+            player.sendMessage(ColorUtils.format("<dark_gray>[<yellow>!<dark_gray>] <gray>Write in chat the input for "
+                    + variableName + " <dark_gray>(or put 'cancel')<gray>."));
+        }
+    }
+
+    @EventHandler
+    public void onChat(AsyncPlayerChatEvent event) {
+        Player player = event.getPlayer();
+        UUID uuid = player.getUniqueId();
+
+        if (!playersEditing.containsKey(uuid))
+            return;
+
+        event.setCancelled(true);
+        String message = event.getMessage();
+        String variableName = playersEditing.get(uuid);
+
+        DebugManager debug = plugin.getDebugManager();
+        if (message.equalsIgnoreCase("cancel")) {
+            player.sendMessage(ColorUtils.format("<dark_gray>[<red>✘<dark_gray>] <red>Canceled"));
+            if (debug.isEnabled(uuid)) {
+                debug.log(player.getName() + " cancelled input for variable=" + variableName);
+            }
+        } else {
+            savedValues.put(variableName, message);
+            player.sendMessage(
+                    ColorUtils.format("<dark_gray>[<green>✔<dark_gray>] <gray>Input saved in " + variableName));
+            if (debug.isEnabled(uuid)) {
+                debug.log(player.getName() + " set variable=" + variableName + " value=" + message);
+            }
+        }
+
+        playersEditing.remove(uuid);
+    }
+
+    public String getValue(String varName) {
+        return savedValues.getOrDefault(varName, "...");
+    }
+}
+
+
+--- FILE: ./src/main/java/com/fendrixx/aurus/processors/ActionProcessor.java ---
 package com.fendrixx.aurus.processors;
 
 import com.fendrixx.aurus.Aurus;
 import net.kyori.adventure.text.minimessage.MiniMessage;
 import org.bukkit.Bukkit;
-import org.bukkit.Sound;
 import org.bukkit.entity.Player;
 
 import java.util.List;
@@ -1064,10 +1476,11 @@ public class ActionProcessor {
         } else if (cmd.startsWith("[sound] ")) {
             String[] parts = cmd.substring(8).split(", ");
             try {
-                Sound sound = Sound.valueOf(parts[0].toUpperCase());
-                float vol = parts.length > 1 ? Float.parseFloat(parts[1]) : 1.0f;
-                float pitch = parts.length > 2 ? Float.parseFloat(parts[2]) : 1.0f;
-                player.playSound(player.getLocation(), sound, vol, pitch);
+                String key = parts[0].trim();
+                if (!key.contains(":")) key = "minecraft:" + key;
+                float vol = parts.length > 1 ? Float.parseFloat(parts[1].trim()) : 1.0f;
+                float pitch = parts.length > 2 ? Float.parseFloat(parts[2].trim()) : 1.0f;
+                player.playSound(player.getLocation(), key, vol, pitch);
             } catch (Exception ignored) {
             }
         }
@@ -1091,66 +1504,7 @@ public class ActionProcessor {
 }
 
 
-FILE: ./src/main/java/com/fendrixx/aurus/processors/InputProcessor.java
-package com.fendrixx.aurus.processors;
-
-import com.fendrixx.aurus.Aurus;
-import com.fendrixx.aurus.util.ColorUtils;
-import org.bukkit.entity.Player;
-import org.bukkit.event.EventHandler;
-import org.bukkit.event.Listener;
-import org.bukkit.event.player.AsyncPlayerChatEvent;
-
-import java.util.HashMap;
-import java.util.Map;
-import java.util.UUID;
-import java.util.concurrent.ConcurrentHashMap;
-
-public class InputProcessor implements Listener {
-    private final Aurus plugin;
-    private final Map<UUID, String> playersEditing = new ConcurrentHashMap<>();
-    private final Map<String, String> savedValues = new ConcurrentHashMap<>();
-
-    public InputProcessor(Aurus plugin) {
-        this.plugin = plugin;
-    }
-
-    public void startInput(Player player, String variableName) {
-        playersEditing.put(player.getUniqueId(), variableName);
-        player.sendMessage(ColorUtils.format("<dark_gray>[<yellow>!<dark_gray>] <gray>Write in chat the input for "
-                + variableName + "<dark_gray>(or put 'cancel')<gray>."));
-    }
-
-    @EventHandler
-    public void onChat(AsyncPlayerChatEvent event) {
-        Player player = event.getPlayer();
-        UUID uuid = player.getUniqueId();
-
-        if (!playersEditing.containsKey(uuid))
-            return;
-
-        event.setCancelled(true);
-        String message = event.getMessage();
-        String variableName = playersEditing.get(uuid);
-
-        if (message.equalsIgnoreCase("cancel")) {
-            player.sendMessage(ColorUtils.format("<dark_gray>[<red>✘<dark_gray>] <red>Canceled"));
-        } else {
-            savedValues.put(variableName, message);
-            player.sendMessage(
-                    ColorUtils.format("<dark_gray>[<green>✔<dark_gray>] <gray>Input saved in " + variableName));
-        }
-
-        playersEditing.remove(uuid);
-    }
-
-    public String getValue(String varName) {
-        return savedValues.getOrDefault(varName, "...");
-    }
-}
-
-
-FILE: ./src/main/java/com/fendrixx/aurus/expansion/PAPIExpansion.java
+--- FILE: ./src/main/java/com/fendrixx/aurus/expansion/PAPIExpansion.java ---
 package com.fendrixx.aurus.expansion;
 
 import com.fendrixx.aurus.processors.InputProcessor;
@@ -1178,7 +1532,7 @@ public class PAPIExpansion extends PlaceholderExpansion {
 
     @Override
     public String getVersion() {
-        return "1.0.0-BETA";
+        return "1.1.0-BETA";
     }
 
     @Override
@@ -1192,11 +1546,1275 @@ public class PAPIExpansion extends PlaceholderExpansion {
     }
 }
 
-FILE: ./src/main/java/com/fendrixx/aurus/Aurus.java
+--- FILE: ./src/main/java/com/fendrixx/aurus/expansion/Metrics.java ---
+/*
+ * This Metrics class was auto-generated and can be copied into your project if you are
+ * not using a build tool like Gradle or Maven for dependency management.
+ *
+ * IMPORTANT: You are not allowed to modify this class, except changing the package.
+ *
+ * Disallowed modifications include but are not limited to:
+ *  - Remove the option for users to opt-out
+ *  - Change the frequency for data submission
+ *  - Obfuscate the code (every obfuscator should allow you to make an exception for specific files)
+ *  - Reformat the code (if you use a linter, add an exception)
+ *
+ * Violations will result in a ban of your plugin and account from bStats.
+ */
+package com.fendrixx.aurus.expansion;
+
+import java.io.BufferedReader;
+import java.io.ByteArrayOutputStream;
+import java.io.DataOutputStream;
+import java.io.File;
+import java.io.IOException;
+import java.io.InputStreamReader;
+import java.lang.reflect.Method;
+import java.net.URL;
+import java.nio.charset.StandardCharsets;
+import java.util.Arrays;
+import java.util.Collection;
+import java.util.HashSet;
+import java.util.Map;
+import java.util.Objects;
+import java.util.Set;
+import java.util.UUID;
+import java.util.concurrent.Callable;
+import java.util.concurrent.ScheduledExecutorService;
+import java.util.concurrent.ScheduledThreadPoolExecutor;
+import java.util.concurrent.TimeUnit;
+import java.util.function.BiConsumer;
+import java.util.function.Consumer;
+import java.util.function.Supplier;
+import java.util.logging.Level;
+import java.util.stream.Collectors;
+import java.util.zip.GZIPOutputStream;
+import javax.net.ssl.HttpsURLConnection;
+import org.bukkit.Bukkit;
+import org.bukkit.configuration.file.YamlConfiguration;
+import org.bukkit.entity.Player;
+import org.bukkit.plugin.Plugin;
+
+public class Metrics {
+
+    private final Plugin plugin;
+
+    private final MetricsBase metricsBase;
+
+    /**
+     * Creates a new Metrics instance.
+     *
+     * @param plugin Your plugin instance.
+     * @param serviceId The id of the service. It can be found at <a
+     *     href="https://bstats.org/what-is-my-plugin-id">What is my plugin id?</a>
+     */
+    public Metrics(Plugin plugin, int serviceId) {
+        this.plugin = plugin;
+        // Get the config file
+        File bStatsFolder = new File(plugin.getDataFolder().getParentFile(), "bStats");
+        File configFile = new File(bStatsFolder, "config.yml");
+        YamlConfiguration config = YamlConfiguration.loadConfiguration(configFile);
+        if (!config.isSet("serverUuid")) {
+            config.addDefault("enabled", true);
+            config.addDefault("serverUuid", UUID.randomUUID().toString());
+            config.addDefault("logFailedRequests", false);
+            config.addDefault("logSentData", false);
+            config.addDefault("logResponseStatusText", false);
+            // Inform the server owners about bStats
+            config
+                    .options()
+                    .header(
+                            "bStats (https://bStats.org) collects some basic information for plugin authors, like how\n"
+                                    + "many people use their plugin and their total player count. It's recommended to keep bStats\n"
+                                    + "enabled, but if you're not comfortable with this, you can turn this setting off. There is no\n"
+                                    + "performance penalty associated with having metrics enabled, and data sent to bStats is fully\n"
+                                    + "anonymous.\n"
+                                    + "Learn more here: https://bstats.org/docs/server-owners")
+                    .copyDefaults(true);
+            try {
+                config.save(configFile);
+            } catch (IOException ignored) {
+            }
+        }
+        // Load the data
+        boolean enabled = config.getBoolean("enabled", true);
+        String serverUUID = config.getString("serverUuid");
+        boolean logErrors = config.getBoolean("logFailedRequests", false);
+        boolean logSentData = config.getBoolean("logSentData", false);
+        boolean logResponseStatusText = config.getBoolean("logResponseStatusText", false);
+        boolean isFolia = false;
+        try {
+            isFolia = Class.forName("io.papermc.paper.threadedregions.RegionizedServer") != null;
+        } catch (Exception e) {
+        }
+        metricsBase =
+                new // See https://github.com/Bastian/bstats-metrics/pull/126
+                        // See https://github.com/Bastian/bstats-metrics/pull/126
+                        // See https://github.com/Bastian/bstats-metrics/pull/126
+                        // See https://github.com/Bastian/bstats-metrics/pull/126
+                        // See https://github.com/Bastian/bstats-metrics/pull/126
+                        // See https://github.com/Bastian/bstats-metrics/pull/126
+                        // See https://github.com/Bastian/bstats-metrics/pull/126
+                        MetricsBase(
+                        "bukkit",
+                        serverUUID,
+                        serviceId,
+                        enabled,
+                        this::appendPlatformData,
+                        this::appendServiceData,
+                        isFolia
+                                ? null
+                                : submitDataTask -> Bukkit.getScheduler().runTask(plugin, submitDataTask),
+                        plugin::isEnabled,
+                        (message, error) -> this.plugin.getLogger().log(Level.WARNING, message, error),
+                        (message) -> this.plugin.getLogger().log(Level.INFO, message),
+                        logErrors,
+                        logSentData,
+                        logResponseStatusText,
+                        false);
+    }
+
+    /** Shuts down the underlying scheduler service. */
+    public void shutdown() {
+        metricsBase.shutdown();
+    }
+
+    /**
+     * Adds a custom chart.
+     *
+     * @param chart The chart to add.
+     */
+    public void addCustomChart(CustomChart chart) {
+        metricsBase.addCustomChart(chart);
+    }
+
+    private void appendPlatformData(JsonObjectBuilder builder) {
+        builder.appendField("playerAmount", getPlayerAmount());
+        builder.appendField("onlineMode", Bukkit.getOnlineMode() ? 1 : 0);
+        builder.appendField("bukkitVersion", Bukkit.getVersion());
+        builder.appendField("bukkitName", Bukkit.getName());
+        builder.appendField("javaVersion", System.getProperty("java.version"));
+        builder.appendField("osName", System.getProperty("os.name"));
+        builder.appendField("osArch", System.getProperty("os.arch"));
+        builder.appendField("osVersion", System.getProperty("os.version"));
+        builder.appendField("coreCount", Runtime.getRuntime().availableProcessors());
+    }
+
+    private void appendServiceData(JsonObjectBuilder builder) {
+        builder.appendField("pluginVersion", plugin.getDescription().getVersion());
+    }
+
+    private int getPlayerAmount() {
+        try {
+            // Around MC 1.8 the return type was changed from an array to a collection,
+            // This fixes java.lang.NoSuchMethodError:
+            // org.bukkit.Bukkit.getOnlinePlayers()Ljava/util/Collection;
+            Method onlinePlayersMethod = Class.forName("org.bukkit.Server").getMethod("getOnlinePlayers");
+            return onlinePlayersMethod.getReturnType().equals(Collection.class)
+                    ? ((Collection<?>) onlinePlayersMethod.invoke(Bukkit.getServer())).size()
+                    : ((Player[]) onlinePlayersMethod.invoke(Bukkit.getServer())).length;
+        } catch (Exception e) {
+            // Just use the new method if the reflection failed
+            return Bukkit.getOnlinePlayers().size();
+        }
+    }
+
+    public static class MetricsBase {
+
+        /** The version of the Metrics class. */
+        public static final String METRICS_VERSION = "3.2.1";
+
+        private static final String REPORT_URL = "https://bStats.org/api/v2/data/%s";
+
+        private final ScheduledExecutorService scheduler;
+
+        private final String platform;
+
+        private final String serverUuid;
+
+        private final int serviceId;
+
+        private final Consumer<JsonObjectBuilder> appendPlatformDataConsumer;
+
+        private final Consumer<JsonObjectBuilder> appendServiceDataConsumer;
+
+        private final Consumer<Runnable> submitTaskConsumer;
+
+        private final Supplier<Boolean> checkServiceEnabledSupplier;
+
+        private final BiConsumer<String, Throwable> errorLogger;
+
+        private final Consumer<String> infoLogger;
+
+        private final boolean logErrors;
+
+        private final boolean logSentData;
+
+        private final boolean logResponseStatusText;
+
+        private final Set<CustomChart> customCharts = new HashSet<>();
+
+        private final boolean enabled;
+
+        /**
+         * Creates a new MetricsBase class instance.
+         *
+         * @param platform The platform of the service.
+         * @param serviceId The id of the service.
+         * @param serverUuid The server uuid.
+         * @param enabled Whether or not data sending is enabled.
+         * @param appendPlatformDataConsumer A consumer that receives a {@code JsonObjectBuilder} and
+         *     appends all platform-specific data.
+         * @param appendServiceDataConsumer A consumer that receives a {@code JsonObjectBuilder} and
+         *     appends all service-specific data.
+         * @param submitTaskConsumer A consumer that takes a runnable with the submit task. This can be
+         *     used to delegate the data collection to a another thread to prevent errors caused by
+         *     concurrency. Can be {@code null}.
+         * @param checkServiceEnabledSupplier A supplier to check if the service is still enabled.
+         * @param errorLogger A consumer that accepts log message and an error.
+         * @param infoLogger A consumer that accepts info log messages.
+         * @param logErrors Whether or not errors should be logged.
+         * @param logSentData Whether or not the sent data should be logged.
+         * @param logResponseStatusText Whether or not the response status text should be logged.
+         * @param skipRelocateCheck Whether or not the relocate check should be skipped.
+         */
+        public MetricsBase(
+                String platform,
+                String serverUuid,
+                int serviceId,
+                boolean enabled,
+                Consumer<JsonObjectBuilder> appendPlatformDataConsumer,
+                Consumer<JsonObjectBuilder> appendServiceDataConsumer,
+                Consumer<Runnable> submitTaskConsumer,
+                Supplier<Boolean> checkServiceEnabledSupplier,
+                BiConsumer<String, Throwable> errorLogger,
+                Consumer<String> infoLogger,
+                boolean logErrors,
+                boolean logSentData,
+                boolean logResponseStatusText,
+                boolean skipRelocateCheck) {
+            ScheduledThreadPoolExecutor scheduler =
+                    new ScheduledThreadPoolExecutor(
+                            1,
+                            task -> {
+                                Thread thread = new Thread(task, "bStats-Metrics");
+                                thread.setDaemon(true);
+                                return thread;
+                            });
+            // We want delayed tasks (non-periodic) that will execute in the future to be
+            // cancelled when the scheduler is shutdown.
+            // Otherwise, we risk preventing the server from shutting down even when
+            // MetricsBase#shutdown() is called
+            scheduler.setExecuteExistingDelayedTasksAfterShutdownPolicy(false);
+            this.scheduler = scheduler;
+            this.platform = platform;
+            this.serverUuid = serverUuid;
+            this.serviceId = serviceId;
+            this.enabled = enabled;
+            this.appendPlatformDataConsumer = appendPlatformDataConsumer;
+            this.appendServiceDataConsumer = appendServiceDataConsumer;
+            this.submitTaskConsumer = submitTaskConsumer;
+            this.checkServiceEnabledSupplier = checkServiceEnabledSupplier;
+            this.errorLogger = errorLogger;
+            this.infoLogger = infoLogger;
+            this.logErrors = logErrors;
+            this.logSentData = logSentData;
+            this.logResponseStatusText = logResponseStatusText;
+            if (!skipRelocateCheck) {
+                checkRelocation();
+            }
+            if (enabled) {
+                // WARNING: Removing the option to opt-out will get your plugin banned from
+                // bStats
+                startSubmitting();
+            }
+        }
+
+        public void addCustomChart(CustomChart chart) {
+            this.customCharts.add(chart);
+        }
+
+        public void shutdown() {
+            scheduler.shutdown();
+        }
+
+        private void startSubmitting() {
+            final Runnable submitTask =
+                    () -> {
+                        if (!enabled || !checkServiceEnabledSupplier.get()) {
+                            // Submitting data or service is disabled
+                            scheduler.shutdown();
+                            return;
+                        }
+                        if (submitTaskConsumer != null) {
+                            submitTaskConsumer.accept(this::submitData);
+                        } else {
+                            this.submitData();
+                        }
+                    };
+            // Many servers tend to restart at a fixed time at xx:00 which causes an uneven
+            // distribution of requests on the
+            // bStats backend. To circumvent this problem, we introduce some randomness into
+            // the initial and second delay.
+            // WARNING: You must not modify and part of this Metrics class, including the
+            // submit delay or frequency!
+            // WARNING: Modifying this code will get your plugin banned on bStats. Just
+            // don't do it!
+            long initialDelay = (long) (1000 * 60 * (3 + Math.random() * 3));
+            long secondDelay = (long) (1000 * 60 * (Math.random() * 30));
+            scheduler.schedule(submitTask, initialDelay, TimeUnit.MILLISECONDS);
+            scheduler.scheduleAtFixedRate(
+                    submitTask, initialDelay + secondDelay, 1000 * 60 * 30, TimeUnit.MILLISECONDS);
+        }
+
+        private void submitData() {
+            final JsonObjectBuilder baseJsonBuilder = new JsonObjectBuilder();
+            appendPlatformDataConsumer.accept(baseJsonBuilder);
+            final JsonObjectBuilder serviceJsonBuilder = new JsonObjectBuilder();
+            appendServiceDataConsumer.accept(serviceJsonBuilder);
+            JsonObjectBuilder.JsonObject[] chartData =
+                    customCharts.stream()
+                            .map(customChart -> customChart.getRequestJsonObject(errorLogger, logErrors))
+                            .filter(Objects::nonNull)
+                            .toArray(JsonObjectBuilder.JsonObject[]::new);
+            serviceJsonBuilder.appendField("id", serviceId);
+            serviceJsonBuilder.appendField("customCharts", chartData);
+            baseJsonBuilder.appendField("service", serviceJsonBuilder.build());
+            baseJsonBuilder.appendField("serverUUID", serverUuid);
+            baseJsonBuilder.appendField("metricsVersion", METRICS_VERSION);
+            JsonObjectBuilder.JsonObject data = baseJsonBuilder.build();
+            scheduler.execute(
+                    () -> {
+                        try {
+                            sendData(data);
+                        } catch (Exception e) {
+                            // Something went wrong! :(
+                            if (logErrors) {
+                                errorLogger.accept("Could not submit bStats metrics data", e);
+                            }
+                        }
+                    });
+        }
+
+        private void sendData(JsonObjectBuilder.JsonObject data) throws Exception {
+            if (logSentData) {
+                infoLogger.accept("Sent bStats metrics data: " + data.toString());
+            }
+            String url = String.format(REPORT_URL, platform);
+            HttpsURLConnection connection = (HttpsURLConnection) new URL(url).openConnection();
+            // Compress the data to save bandwidth
+            byte[] compressedData = compress(data.toString());
+            connection.setRequestMethod("POST");
+            connection.addRequestProperty("Accept", "application/json");
+            connection.addRequestProperty("Connection", "close");
+            connection.addRequestProperty("Content-Encoding", "gzip");
+            connection.addRequestProperty("Content-Length", String.valueOf(compressedData.length));
+            connection.setRequestProperty("Content-Type", "application/json");
+            connection.setRequestProperty("User-Agent", "Metrics-Service/1");
+            connection.setDoOutput(true);
+            try (DataOutputStream outputStream = new DataOutputStream(connection.getOutputStream())) {
+                outputStream.write(compressedData);
+            }
+            StringBuilder builder = new StringBuilder();
+            try (BufferedReader bufferedReader =
+                         new BufferedReader(new InputStreamReader(connection.getInputStream()))) {
+                String line;
+                while ((line = bufferedReader.readLine()) != null) {
+                    builder.append(line);
+                }
+            }
+            if (logResponseStatusText) {
+                infoLogger.accept("Sent data to bStats and received response: " + builder);
+            }
+        }
+
+        /** Checks that the class was properly relocated. */
+        private void checkRelocation() {
+            // You can use the property to disable the check in your test environment
+            if (System.getProperty("bstats.relocatecheck") == null
+                    || !System.getProperty("bstats.relocatecheck").equals("false")) {
+                // Maven's Relocate is clever and changes strings, too. So we have to use this
+                // little "trick" ... :D
+                final String defaultPackage =
+                        new String(new byte[] {'o', 'r', 'g', '.', 'b', 's', 't', 'a', 't', 's'});
+                final String examplePackage =
+                        new String(new byte[] {'y', 'o', 'u', 'r', '.', 'p', 'a', 'c', 'k', 'a', 'g', 'e'});
+                // We want to make sure no one just copy & pastes the example and uses the wrong
+                // package names
+                if (MetricsBase.class.getPackage().getName().startsWith(defaultPackage)
+                        || MetricsBase.class.getPackage().getName().startsWith(examplePackage)) {
+                    throw new IllegalStateException("bStats Metrics class has not been relocated correctly!");
+                }
+            }
+        }
+
+        /**
+         * Gzips the given string.
+         *
+         * @param str The string to gzip.
+         * @return The gzipped string.
+         */
+        private static byte[] compress(final String str) throws IOException {
+            if (str == null) {
+                return null;
+            }
+            ByteArrayOutputStream outputStream = new ByteArrayOutputStream();
+            try (GZIPOutputStream gzip = new GZIPOutputStream(outputStream)) {
+                gzip.write(str.getBytes(StandardCharsets.UTF_8));
+            }
+            return outputStream.toByteArray();
+        }
+    }
+
+    public abstract static class CustomChart {
+
+        private final String chartId;
+
+        protected CustomChart(String chartId) {
+            if (chartId == null) {
+                throw new IllegalArgumentException("chartId must not be null");
+            }
+            this.chartId = chartId;
+        }
+
+        public JsonObjectBuilder.JsonObject getRequestJsonObject(
+                BiConsumer<String, Throwable> errorLogger, boolean logErrors) {
+            JsonObjectBuilder builder = new JsonObjectBuilder();
+            builder.appendField("chartId", chartId);
+            try {
+                JsonObjectBuilder.JsonObject data = getChartData();
+                if (data == null) {
+                    // If the data is null we don't send the chart.
+                    return null;
+                }
+                builder.appendField("data", data);
+            } catch (Throwable t) {
+                if (logErrors) {
+                    errorLogger.accept("Failed to get data for custom chart with id " + chartId, t);
+                }
+                return null;
+            }
+            return builder.build();
+        }
+
+        protected abstract JsonObjectBuilder.JsonObject getChartData() throws Exception;
+    }
+
+    public static class SingleLineChart extends CustomChart {
+
+        private final Callable<Integer> callable;
+
+        /**
+         * Class constructor.
+         *
+         * @param chartId The id of the chart.
+         * @param callable The callable which is used to request the chart data.
+         */
+        public SingleLineChart(String chartId, Callable<Integer> callable) {
+            super(chartId);
+            this.callable = callable;
+        }
+
+        @Override
+        protected JsonObjectBuilder.JsonObject getChartData() throws Exception {
+            int value = callable.call();
+            if (value == 0) {
+                // Null = skip the chart
+                return null;
+            }
+            return new JsonObjectBuilder().appendField("value", value).build();
+        }
+    }
+
+    public static class DrilldownPie extends CustomChart {
+
+        private final Callable<Map<String, Map<String, Integer>>> callable;
+
+        /**
+         * Class constructor.
+         *
+         * @param chartId The id of the chart.
+         * @param callable The callable which is used to request the chart data.
+         */
+        public DrilldownPie(String chartId, Callable<Map<String, Map<String, Integer>>> callable) {
+            super(chartId);
+            this.callable = callable;
+        }
+
+        @Override
+        public JsonObjectBuilder.JsonObject getChartData() throws Exception {
+            JsonObjectBuilder valuesBuilder = new JsonObjectBuilder();
+            Map<String, Map<String, Integer>> map = callable.call();
+            if (map == null || map.isEmpty()) {
+                // Null = skip the chart
+                return null;
+            }
+            boolean reallyAllSkipped = true;
+            for (Map.Entry<String, Map<String, Integer>> entryValues : map.entrySet()) {
+                JsonObjectBuilder valueBuilder = new JsonObjectBuilder();
+                boolean allSkipped = true;
+                for (Map.Entry<String, Integer> valueEntry : map.get(entryValues.getKey()).entrySet()) {
+                    valueBuilder.appendField(valueEntry.getKey(), valueEntry.getValue());
+                    allSkipped = false;
+                }
+                if (!allSkipped) {
+                    reallyAllSkipped = false;
+                    valuesBuilder.appendField(entryValues.getKey(), valueBuilder.build());
+                }
+            }
+            if (reallyAllSkipped) {
+                // Null = skip the chart
+                return null;
+            }
+            return new JsonObjectBuilder().appendField("values", valuesBuilder.build()).build();
+        }
+    }
+
+    public static class AdvancedBarChart extends CustomChart {
+
+        private final Callable<Map<String, int[]>> callable;
+
+        /**
+         * Class constructor.
+         *
+         * @param chartId The id of the chart.
+         * @param callable The callable which is used to request the chart data.
+         */
+        public AdvancedBarChart(String chartId, Callable<Map<String, int[]>> callable) {
+            super(chartId);
+            this.callable = callable;
+        }
+
+        @Override
+        protected JsonObjectBuilder.JsonObject getChartData() throws Exception {
+            JsonObjectBuilder valuesBuilder = new JsonObjectBuilder();
+            Map<String, int[]> map = callable.call();
+            if (map == null || map.isEmpty()) {
+                // Null = skip the chart
+                return null;
+            }
+            boolean allSkipped = true;
+            for (Map.Entry<String, int[]> entry : map.entrySet()) {
+                if (entry.getValue().length == 0) {
+                    // Skip this invalid
+                    continue;
+                }
+                allSkipped = false;
+                valuesBuilder.appendField(entry.getKey(), entry.getValue());
+            }
+            if (allSkipped) {
+                // Null = skip the chart
+                return null;
+            }
+            return new JsonObjectBuilder().appendField("values", valuesBuilder.build()).build();
+        }
+    }
+
+    public static class SimpleBarChart extends CustomChart {
+
+        private final Callable<Map<String, Integer>> callable;
+
+        /**
+         * Class constructor.
+         *
+         * @param chartId The id of the chart.
+         * @param callable The callable which is used to request the chart data.
+         */
+        public SimpleBarChart(String chartId, Callable<Map<String, Integer>> callable) {
+            super(chartId);
+            this.callable = callable;
+        }
+
+        @Override
+        protected JsonObjectBuilder.JsonObject getChartData() throws Exception {
+            JsonObjectBuilder valuesBuilder = new JsonObjectBuilder();
+            Map<String, Integer> map = callable.call();
+            if (map == null || map.isEmpty()) {
+                // Null = skip the chart
+                return null;
+            }
+            for (Map.Entry<String, Integer> entry : map.entrySet()) {
+                valuesBuilder.appendField(entry.getKey(), new int[] {entry.getValue()});
+            }
+            return new JsonObjectBuilder().appendField("values", valuesBuilder.build()).build();
+        }
+    }
+
+    public static class MultiLineChart extends CustomChart {
+
+        private final Callable<Map<String, Integer>> callable;
+
+        /**
+         * Class constructor.
+         *
+         * @param chartId The id of the chart.
+         * @param callable The callable which is used to request the chart data.
+         */
+        public MultiLineChart(String chartId, Callable<Map<String, Integer>> callable) {
+            super(chartId);
+            this.callable = callable;
+        }
+
+        @Override
+        protected JsonObjectBuilder.JsonObject getChartData() throws Exception {
+            JsonObjectBuilder valuesBuilder = new JsonObjectBuilder();
+            Map<String, Integer> map = callable.call();
+            if (map == null || map.isEmpty()) {
+                // Null = skip the chart
+                return null;
+            }
+            boolean allSkipped = true;
+            for (Map.Entry<String, Integer> entry : map.entrySet()) {
+                if (entry.getValue() == 0) {
+                    // Skip this invalid
+                    continue;
+                }
+                allSkipped = false;
+                valuesBuilder.appendField(entry.getKey(), entry.getValue());
+            }
+            if (allSkipped) {
+                // Null = skip the chart
+                return null;
+            }
+            return new JsonObjectBuilder().appendField("values", valuesBuilder.build()).build();
+        }
+    }
+
+    public static class AdvancedPie extends CustomChart {
+
+        private final Callable<Map<String, Integer>> callable;
+
+        /**
+         * Class constructor.
+         *
+         * @param chartId The id of the chart.
+         * @param callable The callable which is used to request the chart data.
+         */
+        public AdvancedPie(String chartId, Callable<Map<String, Integer>> callable) {
+            super(chartId);
+            this.callable = callable;
+        }
+
+        @Override
+        protected JsonObjectBuilder.JsonObject getChartData() throws Exception {
+            JsonObjectBuilder valuesBuilder = new JsonObjectBuilder();
+            Map<String, Integer> map = callable.call();
+            if (map == null || map.isEmpty()) {
+                // Null = skip the chart
+                return null;
+            }
+            boolean allSkipped = true;
+            for (Map.Entry<String, Integer> entry : map.entrySet()) {
+                if (entry.getValue() == 0) {
+                    // Skip this invalid
+                    continue;
+                }
+                allSkipped = false;
+                valuesBuilder.appendField(entry.getKey(), entry.getValue());
+            }
+            if (allSkipped) {
+                // Null = skip the chart
+                return null;
+            }
+            return new JsonObjectBuilder().appendField("values", valuesBuilder.build()).build();
+        }
+    }
+
+    public static class SimplePie extends CustomChart {
+
+        private final Callable<String> callable;
+
+        /**
+         * Class constructor.
+         *
+         * @param chartId The id of the chart.
+         * @param callable The callable which is used to request the chart data.
+         */
+        public SimplePie(String chartId, Callable<String> callable) {
+            super(chartId);
+            this.callable = callable;
+        }
+
+        @Override
+        protected JsonObjectBuilder.JsonObject getChartData() throws Exception {
+            String value = callable.call();
+            if (value == null || value.isEmpty()) {
+                // Null = skip the chart
+                return null;
+            }
+            return new JsonObjectBuilder().appendField("value", value).build();
+        }
+    }
+
+    /**
+     * An extremely simple JSON builder.
+     *
+     * <p>While this class is neither feature-rich nor the most performant one, it's sufficient enough
+     * for its use-case.
+     */
+    public static class JsonObjectBuilder {
+
+        private StringBuilder builder = new StringBuilder();
+
+        private boolean hasAtLeastOneField = false;
+
+        public JsonObjectBuilder() {
+            builder.append("{");
+        }
+
+        /**
+         * Appends a null field to the JSON.
+         *
+         * @param key The key of the field.
+         * @return A reference to this object.
+         */
+        public JsonObjectBuilder appendNull(String key) {
+            appendFieldUnescaped(key, "null");
+            return this;
+        }
+
+        /**
+         * Appends a string field to the JSON.
+         *
+         * @param key The key of the field.
+         * @param value The value of the field.
+         * @return A reference to this object.
+         */
+        public JsonObjectBuilder appendField(String key, String value) {
+            if (value == null) {
+                throw new IllegalArgumentException("JSON value must not be null");
+            }
+            appendFieldUnescaped(key, "\"" + escape(value) + "\"");
+            return this;
+        }
+
+        /**
+         * Appends an integer field to the JSON.
+         *
+         * @param key The key of the field.
+         * @param value The value of the field.
+         * @return A reference to this object.
+         */
+        public JsonObjectBuilder appendField(String key, int value) {
+            appendFieldUnescaped(key, String.valueOf(value));
+            return this;
+        }
+
+        /**
+         * Appends an object to the JSON.
+         *
+         * @param key The key of the field.
+         * @param object The object.
+         * @return A reference to this object.
+         */
+        public JsonObjectBuilder appendField(String key, JsonObject object) {
+            if (object == null) {
+                throw new IllegalArgumentException("JSON object must not be null");
+            }
+            appendFieldUnescaped(key, object.toString());
+            return this;
+        }
+
+        /**
+         * Appends a string array to the JSON.
+         *
+         * @param key The key of the field.
+         * @param values The string array.
+         * @return A reference to this object.
+         */
+        public JsonObjectBuilder appendField(String key, String[] values) {
+            if (values == null) {
+                throw new IllegalArgumentException("JSON values must not be null");
+            }
+            String escapedValues =
+                    Arrays.stream(values)
+                            .map(value -> "\"" + escape(value) + "\"")
+                            .collect(Collectors.joining(","));
+            appendFieldUnescaped(key, "[" + escapedValues + "]");
+            return this;
+        }
+
+        /**
+         * Appends an integer array to the JSON.
+         *
+         * @param key The key of the field.
+         * @param values The integer array.
+         * @return A reference to this object.
+         */
+        public JsonObjectBuilder appendField(String key, int[] values) {
+            if (values == null) {
+                throw new IllegalArgumentException("JSON values must not be null");
+            }
+            String escapedValues =
+                    Arrays.stream(values).mapToObj(String::valueOf).collect(Collectors.joining(","));
+            appendFieldUnescaped(key, "[" + escapedValues + "]");
+            return this;
+        }
+
+        /**
+         * Appends an object array to the JSON.
+         *
+         * @param key The key of the field.
+         * @param values The integer array.
+         * @return A reference to this object.
+         */
+        public JsonObjectBuilder appendField(String key, JsonObject[] values) {
+            if (values == null) {
+                throw new IllegalArgumentException("JSON values must not be null");
+            }
+            String escapedValues =
+                    Arrays.stream(values).map(JsonObject::toString).collect(Collectors.joining(","));
+            appendFieldUnescaped(key, "[" + escapedValues + "]");
+            return this;
+        }
+
+        /**
+         * Appends a field to the object.
+         *
+         * @param key The key of the field.
+         * @param escapedValue The escaped value of the field.
+         */
+        private void appendFieldUnescaped(String key, String escapedValue) {
+            if (builder == null) {
+                throw new IllegalStateException("JSON has already been built");
+            }
+            if (key == null) {
+                throw new IllegalArgumentException("JSON key must not be null");
+            }
+            if (hasAtLeastOneField) {
+                builder.append(",");
+            }
+            builder.append("\"").append(escape(key)).append("\":").append(escapedValue);
+            hasAtLeastOneField = true;
+        }
+
+        /**
+         * Builds the JSON string and invalidates this builder.
+         *
+         * @return The built JSON string.
+         */
+        public JsonObject build() {
+            if (builder == null) {
+                throw new IllegalStateException("JSON has already been built");
+            }
+            JsonObject object = new JsonObject(builder.append("}").toString());
+            builder = null;
+            return object;
+        }
+
+        /**
+         * Escapes the given string like stated in https://www.ietf.org/rfc/rfc4627.txt.
+         *
+         * <p>This method escapes only the necessary characters '"', '\'. and '\u0000' - '\u001F'.
+         * Compact escapes are not used (e.g., '\n' is escaped as "\u000a" and not as "\n").
+         *
+         * @param value The value to escape.
+         * @return The escaped value.
+         */
+        private static String escape(String value) {
+            final StringBuilder builder = new StringBuilder();
+            for (int i = 0; i < value.length(); i++) {
+                char c = value.charAt(i);
+                if (c == '"') {
+                    builder.append("\\\"");
+                } else if (c == '\\') {
+                    builder.append("\\\\");
+                } else if (c <= '\u000F') {
+                    builder.append("\\u000").append(Integer.toHexString(c));
+                } else if (c <= '\u001F') {
+                    builder.append("\\u00").append(Integer.toHexString(c));
+                } else {
+                    builder.append(c);
+                }
+            }
+            return builder.toString();
+        }
+
+        /**
+         * A super simple representation of a JSON object.
+         *
+         * <p>This class only exists to make methods of the {@link JsonObjectBuilder} type-safe and not
+         * allow a raw string inputs for methods like {@link JsonObjectBuilder#appendField(String,
+         * JsonObject)}.
+         */
+        public static class JsonObject {
+
+            private final String value;
+
+            private JsonObject(String value) {
+                this.value = value;
+            }
+
+            @Override
+            public String toString() {
+                return value;
+            }
+        }
+    }
+}
+
+--- FILE: ./src/main/java/com/fendrixx/aurus/packets/SkinFetcher.java ---
+package com.fendrixx.aurus.packets;
+
+import com.google.gson.JsonArray;
+import com.google.gson.JsonObject;
+import com.google.gson.JsonParser;
+
+import java.io.InputStreamReader;
+import java.net.HttpURLConnection;
+import java.net.URI;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.ConcurrentHashMap;
+
+public class SkinFetcher {
+
+    public record SkinData(String textureValue, String textureSignature) {}
+
+    private static final ConcurrentHashMap<String, SkinData> CACHE = new ConcurrentHashMap<>();
+
+    public static CompletableFuture<SkinData> fetchAsync(String username) {
+        SkinData cached = CACHE.get(username.toLowerCase());
+        if (cached != null) return CompletableFuture.completedFuture(cached);
+        return CompletableFuture.supplyAsync(() -> fetchBlocking(username));
+    }
+
+    public static SkinData fetchBlocking(String username) {
+        SkinData cached = CACHE.get(username.toLowerCase());
+        if (cached != null) return cached;
+
+        try {
+            HttpURLConnection conn = (HttpURLConnection) URI.create(
+                    "https://api.mojang.com/users/profiles/minecraft/" + username).toURL().openConnection();
+            conn.setConnectTimeout(5000);
+            conn.setReadTimeout(5000);
+            if (conn.getResponseCode() != 200) return null;
+
+            JsonObject profile;
+            try (InputStreamReader reader = new InputStreamReader(conn.getInputStream())) {
+                profile = JsonParser.parseReader(reader).getAsJsonObject();
+            }
+            String uuid = profile.get("id").getAsString();
+
+            HttpURLConnection conn2 = (HttpURLConnection) URI.create(
+                    "https://sessionserver.mojang.com/session/minecraft/profile/" + uuid + "?unsigned=false").toURL().openConnection();
+            conn2.setConnectTimeout(5000);
+            conn2.setReadTimeout(5000);
+            if (conn2.getResponseCode() != 200) return null;
+
+            JsonObject session;
+            try (InputStreamReader reader = new InputStreamReader(conn2.getInputStream())) {
+                session = JsonParser.parseReader(reader).getAsJsonObject();
+            }
+
+            JsonArray properties = session.getAsJsonArray("properties");
+            for (int i = 0; i < properties.size(); i++) {
+                JsonObject prop = properties.get(i).getAsJsonObject();
+                if ("textures".equals(prop.get("name").getAsString())) {
+                    SkinData data = new SkinData(
+                            prop.get("value").getAsString(),
+                            prop.get("signature").getAsString());
+                    CACHE.put(username.toLowerCase(), data);
+                    return data;
+                }
+            }
+        } catch (Exception e) {
+            e.printStackTrace();
+        }
+        return null;
+    }
+}
+
+
+--- FILE: ./src/main/java/com/fendrixx/aurus/packets/FakeEntityFactory.java ---
+package com.fendrixx.aurus.packets;
+
+import com.github.retrooper.packetevents.PacketEvents;
+import com.github.retrooper.packetevents.protocol.entity.data.EntityData;
+import com.github.retrooper.packetevents.protocol.entity.data.EntityDataTypes;
+import com.github.retrooper.packetevents.protocol.entity.type.EntityType;
+import com.github.retrooper.packetevents.protocol.entity.type.EntityTypes;
+import com.github.retrooper.packetevents.protocol.player.GameMode;
+import com.github.retrooper.packetevents.protocol.player.TextureProperty;
+import com.github.retrooper.packetevents.protocol.player.UserProfile;
+import com.github.retrooper.packetevents.protocol.world.Location;
+import com.github.retrooper.packetevents.wrapper.play.server.*;
+import io.github.retrooper.packetevents.util.SpigotConversionUtil;
+import net.kyori.adventure.text.Component;
+import net.kyori.adventure.text.format.NamedTextColor;
+import net.kyori.adventure.text.serializer.legacy.LegacyComponentSerializer;
+import org.bukkit.entity.Player;
+import org.bukkit.inventory.ItemStack;
+
+import java.util.*;
+import java.util.concurrent.atomic.AtomicInteger;
+
+public class FakeEntityFactory {
+
+    private static final AtomicInteger ID_COUNTER = new AtomicInteger(-1);
+    private static final boolean SUPPORTS_SCALE;
+
+    static {
+        String version = org.bukkit.Bukkit.getBukkitVersion();
+        String[] parts = version.split("-")[0].split("\\.");
+        int major = Integer.parseInt(parts[1]);
+        int minor = parts.length > 2 ? Integer.parseInt(parts[2]) : 0;
+        SUPPORTS_SCALE = major > 20 || (major == 20 && minor >= 5);
+    }
+
+    public static boolean supportsScale() {
+        return SUPPORTS_SCALE;
+    }
+
+    public static int nextEntityId() {
+        return ID_COUNTER.getAndDecrement();
+    }
+
+    private static void send(Player viewer, Object packet) {
+        PacketEvents.getAPI().getPlayerManager().sendPacket(viewer, (com.github.retrooper.packetevents.wrapper.PacketWrapper<?>) packet);
+    }
+
+    public static void spawnFakePlayer(Player viewer, int entityId, UUID fakeUUID, org.bukkit.Location loc,
+                                       SkinFetcher.SkinData skin, String nametag) {
+        String fakeName = "NPC_" + Integer.toHexString(entityId & 0xFFFF);
+        UserProfile profile = new UserProfile(fakeUUID, fakeName);
+        if (skin != null) {
+            profile.setTextureProperties(List.of(new TextureProperty("textures", skin.textureValue(), skin.textureSignature())));
+        }
+
+        WrapperPlayServerPlayerInfoUpdate.PlayerInfo info = new WrapperPlayServerPlayerInfoUpdate.PlayerInfo(
+                profile, false, 0, GameMode.CREATIVE, null, null);
+
+        WrapperPlayServerPlayerInfoUpdate infoPacket = new WrapperPlayServerPlayerInfoUpdate(
+                EnumSet.of(
+                        WrapperPlayServerPlayerInfoUpdate.Action.ADD_PLAYER,
+                        WrapperPlayServerPlayerInfoUpdate.Action.UPDATE_LISTED),
+                info);
+        send(viewer, infoPacket);
+
+        WrapperPlayServerSpawnEntity spawnPacket = new WrapperPlayServerSpawnEntity(
+                entityId, fakeUUID, EntityTypes.PLAYER,
+                new Location(loc.getX(), loc.getY(), loc.getZ(), loc.getYaw(), loc.getPitch()),
+                loc.getYaw(), 0, null);
+        send(viewer, spawnPacket);
+
+        List<EntityData<?>> metadata = new ArrayList<>();
+        metadata.add(new EntityData<>(17, EntityDataTypes.BYTE, (byte) 0x7F));
+        send(viewer, new WrapperPlayServerEntityMetadata(entityId, metadata));
+
+        WrapperPlayServerTeams.NameTagVisibility nametagVisibility =
+                (nametag != null && !nametag.isEmpty())
+                        ? WrapperPlayServerTeams.NameTagVisibility.ALWAYS
+                        : WrapperPlayServerTeams.NameTagVisibility.NEVER;
+
+        WrapperPlayServerTeams.ScoreBoardTeamInfo teamInfo = new WrapperPlayServerTeams.ScoreBoardTeamInfo(
+                Component.empty(), Component.empty(), Component.empty(),
+                nametagVisibility,
+                WrapperPlayServerTeams.CollisionRule.NEVER,
+                NamedTextColor.WHITE,
+                WrapperPlayServerTeams.OptionData.NONE);
+
+        send(viewer, new WrapperPlayServerTeams(
+                "aurus_" + (entityId & 0xFFFF),
+                WrapperPlayServerTeams.TeamMode.CREATE, teamInfo, fakeName));
+
+        if (nametag != null && !nametag.isEmpty()) {
+            Component parsed = net.kyori.adventure.text.minimessage.MiniMessage.miniMessage().deserialize(nametag);
+            List<EntityData<?>> nameMeta = new ArrayList<>();
+            nameMeta.add(new EntityData<>(2, EntityDataTypes.OPTIONAL_ADV_COMPONENT, Optional.of(parsed)));
+            nameMeta.add(new EntityData<>(3, EntityDataTypes.BOOLEAN, true));
+            send(viewer, new WrapperPlayServerEntityMetadata(entityId, nameMeta));
+        }
+    }
+
+    public static void spawnFakeEntity(Player viewer, int entityId, org.bukkit.Location loc, String entityTypeName) {
+        EntityType type = EntityTypes.getByName("minecraft:" + entityTypeName.toLowerCase());
+        if (type == null) type = EntityTypes.ZOMBIE;
+
+        UUID uuid = UUID.randomUUID();
+        WrapperPlayServerSpawnEntity spawnPacket = new WrapperPlayServerSpawnEntity(
+                entityId, uuid, type,
+                new Location(loc.getX(), loc.getY(), loc.getZ(), loc.getYaw(), loc.getPitch()),
+                loc.getYaw(), 0, null);
+        send(viewer, spawnPacket);
+
+        List<EntityData<?>> metadata = new ArrayList<>();
+        metadata.add(new EntityData<>(5, EntityDataTypes.BOOLEAN, true));
+        metadata.add(new EntityData<>(4, EntityDataTypes.BOOLEAN, true));
+        send(viewer, new WrapperPlayServerEntityMetadata(entityId, metadata));
+    }
+
+    public static void setScale(Player viewer, int entityId, double scale) {
+        if (!SUPPORTS_SCALE || scale == 1.0) return;
+        WrapperPlayServerUpdateAttributes.Property prop = new WrapperPlayServerUpdateAttributes.Property(
+                com.github.retrooper.packetevents.protocol.attribute.Attributes.GENERIC_SCALE,
+                scale, Collections.emptyList());
+        send(viewer, new WrapperPlayServerUpdateAttributes(entityId, List.of(prop)));
+    }
+
+    public static void destroyEntities(Player viewer, int... entityIds) {
+        send(viewer, new WrapperPlayServerDestroyEntities(entityIds));
+    }
+
+    public static void removePlayerInfo(Player viewer, UUID... fakeUUIDs) {
+        send(viewer, new WrapperPlayServerPlayerInfoRemove(fakeUUIDs));
+    }
+
+    public static int spawnFakeTextDisplay(Player viewer, org.bukkit.Location loc, String text,
+                                            int bgColor, boolean shadow, byte billboard, float scale,
+                                            float rotX, float rotY, float rotZ) {
+        int entityId = nextEntityId();
+        UUID uuid = UUID.randomUUID();
+
+        send(viewer, new WrapperPlayServerSpawnEntity(
+                entityId, uuid, EntityTypes.TEXT_DISPLAY,
+                new Location(loc.getX(), loc.getY(), loc.getZ(), loc.getYaw(), loc.getPitch()),
+                loc.getYaw(), 0, null));
+
+        List<EntityData<?>> meta = new ArrayList<>();
+        meta.add(new EntityData<>(15, EntityDataTypes.BYTE, billboard));
+        meta.add(new EntityData<>(8, EntityDataTypes.INT, 0));
+
+        Component textComponent = LegacyComponentSerializer.legacySection().deserialize(text);
+        meta.add(new EntityData<>(23, EntityDataTypes.ADV_COMPONENT, textComponent));
+        meta.add(new EntityData<>(25, EntityDataTypes.INT, bgColor));
+        meta.add(new EntityData<>(26, EntityDataTypes.BYTE, (byte) -1));
+        meta.add(new EntityData<>(27, EntityDataTypes.BYTE, (byte) (shadow ? 0x01 : 0)));
+
+        send(viewer, new WrapperPlayServerEntityMetadata(entityId, meta));
+        setDisplayTransform(viewer, entityId, scale, rotX, rotY, rotZ);
+
+        return entityId;
+    }
+
+    public static int spawnFakeItemDisplay(Player viewer, org.bukkit.Location loc, ItemStack itemStack,
+                                            float scale, float rotX, float rotY, float rotZ) {
+        int entityId = nextEntityId();
+        UUID uuid = UUID.randomUUID();
+
+        send(viewer, new WrapperPlayServerSpawnEntity(
+                entityId, uuid, EntityTypes.ITEM_DISPLAY,
+                new Location(loc.getX(), loc.getY(), loc.getZ(), loc.getYaw(), loc.getPitch()),
+                loc.getYaw(), 0, null));
+
+        List<EntityData<?>> meta = new ArrayList<>();
+        meta.add(new EntityData<>(15, EntityDataTypes.BYTE, (byte) 0));
+        meta.add(new EntityData<>(23, EntityDataTypes.ITEMSTACK,
+                SpigotConversionUtil.fromBukkitItemStack(itemStack)));
+
+        send(viewer, new WrapperPlayServerEntityMetadata(entityId, meta));
+        setDisplayTransform(viewer, entityId, scale, rotX, rotY, rotZ);
+
+        return entityId;
+    }
+
+    public static int spawnFakeBlockDisplay(Player viewer, org.bukkit.Location loc, int blockStateId,
+                                             float scale, float rotX, float rotY, float rotZ) {
+        int entityId = nextEntityId();
+        UUID uuid = UUID.randomUUID();
+
+        send(viewer, new WrapperPlayServerSpawnEntity(
+                entityId, uuid, EntityTypes.BLOCK_DISPLAY,
+                new Location(loc.getX(), loc.getY(), loc.getZ(), loc.getYaw(), loc.getPitch()),
+                loc.getYaw(), 0, null));
+
+        List<EntityData<?>> meta = new ArrayList<>();
+        meta.add(new EntityData<>(15, EntityDataTypes.BYTE, (byte) 0));
+        meta.add(new EntityData<>(23, EntityDataTypes.INT, blockStateId));
+
+        send(viewer, new WrapperPlayServerEntityMetadata(entityId, meta));
+        setDisplayTransform(viewer, entityId, scale, rotX, rotY, rotZ);
+
+        return entityId;
+    }
+
+    public static void setDisplayTransform(Player viewer, int entityId, float scale,
+                                            float rotX, float rotY, float rotZ) {
+        List<EntityData<?>> meta = new ArrayList<>();
+        meta.add(new EntityData<>(12, EntityDataTypes.VECTOR3F,
+                new com.github.retrooper.packetevents.util.Vector3f(scale, scale, scale)));
+        if (rotX != 0 || rotY != 0 || rotZ != 0) {
+            org.joml.Quaternionf q = new org.joml.Quaternionf().rotationXYZ(
+                    (float) Math.toRadians(rotX),
+                    (float) Math.toRadians(rotY),
+                    (float) Math.toRadians(rotZ));
+            meta.add(new EntityData<>(13, EntityDataTypes.QUATERNION,
+                    new com.github.retrooper.packetevents.util.Quaternion4f(q.x, q.y, q.z, q.w)));
+        }
+        meta.add(new EntityData<>(8, EntityDataTypes.INT, 0));
+        meta.add(new EntityData<>(9, EntityDataTypes.INT, 0));
+
+        send(viewer, new WrapperPlayServerEntityMetadata(entityId, meta));
+    }
+
+    public static void rotateEntity(Player viewer, int entityId, float yaw, float pitch) {
+        send(viewer, new WrapperPlayServerEntityRotation(entityId, yaw, pitch, false));
+        send(viewer, new WrapperPlayServerEntityHeadLook(entityId, yaw));
+    }
+
+    public static void rotateEntityFull(Player viewer, int entityId, float bodyYaw, float headPitch, float headYaw) {
+        send(viewer, new WrapperPlayServerEntityRotation(entityId, bodyYaw, headPitch, false));
+        send(viewer, new WrapperPlayServerEntityHeadLook(entityId, headYaw));
+    }
+
+    public static void teleportEntity(Player viewer, int entityId, org.bukkit.Location loc) {
+        send(viewer, new WrapperPlayServerEntityTeleport(entityId,
+                new Location(loc.getX(), loc.getY(), loc.getZ(), loc.getYaw(), loc.getPitch()),
+                false));
+    }
+
+    public static void updateEntityMetadata(Player viewer, int entityId, List<EntityData<?>> metadata) {
+        send(viewer, new WrapperPlayServerEntityMetadata(entityId, metadata));
+    }
+
+    public static void updateTextDisplayText(Player viewer, int entityId, String text) {
+        Component textComponent = LegacyComponentSerializer.legacySection().deserialize(text);
+        List<EntityData<?>> meta = new ArrayList<>();
+        meta.add(new EntityData<>(23, EntityDataTypes.ADV_COMPONENT, textComponent));
+        send(viewer, new WrapperPlayServerEntityMetadata(entityId, meta));
+    }
+}
+
+
+--- FILE: ./src/main/java/com/fendrixx/aurus/debug/DebugManager.java ---
+package com.fendrixx.aurus.debug;
+
+import com.fendrixx.aurus.util.ColorUtils;
+import org.bukkit.Bukkit;
+
+import java.util.HashSet;
+import java.util.Set;
+import java.util.UUID;
+
+public class DebugManager {
+    private final Set<UUID> enabled = new HashSet<>();
+    private final String prefix = "<dark_gray>[<gradient:dark_purple:yellow> Aurus </gradient><dark_gray>] <aqua>[DEBUG] ";
+
+    public boolean toggle(UUID uuid) {
+        if (enabled.contains(uuid)) {
+            enabled.remove(uuid);
+            return false;
+        }
+        enabled.add(uuid);
+        return true;
+    }
+
+    public boolean isEnabled(UUID uuid) {
+        return enabled.contains(uuid);
+    }
+
+    public void log(String message) {
+        Bukkit.getConsoleSender().sendMessage(ColorUtils.format(prefix + "<gray>" + message));
+    }
+}
+
+
+--- FILE: ./src/main/java/com/fendrixx/aurus/Aurus.java ---
 package com.fendrixx.aurus;
 
 import com.fendrixx.aurus.commands.AurusCommand;
 import com.fendrixx.aurus.config.ConfigHandler;
+import com.fendrixx.aurus.debug.DebugManager;
+import com.fendrixx.aurus.expansion.Metrics;
 import com.fendrixx.aurus.expansion.PAPIExpansion;
 import com.fendrixx.aurus.listeners.InteractionListener;
 import com.fendrixx.aurus.listeners.MoveListener;
@@ -1213,6 +2831,9 @@ import net.kyori.adventure.platform.bukkit.BukkitAudiences;
 import org.bukkit.Bukkit;
 import org.bukkit.entity.Player;
 import org.bukkit.plugin.java.JavaPlugin;
+import revxrsal.commands.bukkit.BukkitLamp;
+import revxrsal.commands.Lamp;
+import revxrsal.commands.bukkit.actor.BukkitCommandActor;
 
 public class Aurus extends JavaPlugin {
 
@@ -1221,18 +2842,25 @@ public class Aurus extends JavaPlugin {
     private ConfigHandler configHandler;
     private ActionProcessor actionProcessor;
     private InputProcessor inputProcessor;
+    private DebugManager debugManager;
+    private final String prefix = "<dark_gray>[<gradient:dark_purple:yellow> Aurus </gradient><dark_gray>] ";
 
     @Override
     public void onLoad() {
-        PacketEvents.setAPI(SpigotPacketEventsBuilder.build(this));
+        var builder = SpigotPacketEventsBuilder.build(this);
+        builder.getSettings()
+                .checkForUpdates(false);
+        PacketEvents.setAPI(builder);
         PacketEvents.getAPI().load();
-
         Bukkit.getConsoleSender().sendMessage(ColorUtils.format(
-                "<dark_gray>[<gradient:dark_purple:yellow> Aurus </gradient><dark_gray>] [<yellow>↺<dark_gray>] <yellow>Plugin loading..."));
+                prefix + "[<yellow>↺<dark_gray>] <yellow>Plugin loading..."));
     }
 
     @Override
     public void onEnable() {
+        int pluginId = 29986;
+        Metrics metrics = new Metrics(this, pluginId);
+
         PacketEvents.getAPI().init();
         this.adventure = BukkitAudiences.create(this);
 
@@ -1240,6 +2868,7 @@ public class Aurus extends JavaPlugin {
         this.menuManager = new MenuManager(this);
         this.actionProcessor = new ActionProcessor(this);
         this.inputProcessor = new InputProcessor(this);
+        this.debugManager = new DebugManager();
 
         if (Bukkit.getPluginManager().getPlugin("PlaceholderAPI") != null) {
             new PAPIExpansion(this.inputProcessor, this).register();
@@ -1260,31 +2889,23 @@ public class Aurus extends JavaPlugin {
     @Override
     public void onDisable() {
         Bukkit.getConsoleSender().sendMessage(ColorUtils.format(
-                "<dark_gray>[<gradient:dark_purple:yellow> Aurus </gradient><dark_gray>] [<yellow>↺<dark_gray>] <yellow>Disabling menus..."));
+                prefix + "[<yellow>↺<dark_gray>] <yellow>Disabling menus..."));
         if (this.menuManager != null) {
             this.menuManager.closeAll();
         }
 
         Bukkit.getConsoleSender().sendMessage(ColorUtils.format(
-                "<dark_gray>[<gradient:dark_purple:yellow> Aurus </gradient><dark_gray>] [<yellow>↺<dark_gray>] <yellow>Disabling adventure..."));
+                prefix + "[<yellow>↺<dark_gray>] <yellow>Disabling adventure..."));
         if (this.adventure != null) {
             this.adventure.close();
         }
 
         Bukkit.getConsoleSender().sendMessage(ColorUtils.format(
-                "<dark_gray>[<gradient:dark_purple:yellow> Aurus </gradient><dark_gray>] [<yellow>↺<dark_gray>] <yellow>Disabling packetevents..."));
+                prefix + "[<yellow>↺<dark_gray>] <yellow>Disabling packetevents..."));
         PacketEvents.getAPI().terminate();
 
         Bukkit.getConsoleSender().sendMessage(ColorUtils.format(
-                "<dark_gray>[<gradient:dark_purple:yellow> Aurus </gradient><dark_gray>] [<green>✔<dark_gray>] <green>Plugin disabled!"));
-    }
-
-    private void registerCommands() {
-        if (getCommand("aurus") != null) {
-            AurusCommand cmd = new AurusCommand(this);
-            getCommand("aurus").setExecutor(cmd);
-            getCommand("aurus").setTabCompleter(cmd);
-        }
+                prefix + "[<green>✔<dark_gray>] <green>Plugin disabled!"));
     }
 
     private void registerPacketListener(InteractionListener listener) {
@@ -1302,17 +2923,22 @@ public class Aurus extends JavaPlugin {
         });
     }
 
+    private void registerCommands() {
+        Lamp<BukkitCommandActor> lamp = BukkitLamp.builder(this).build();
+        lamp.register(new AurusCommand(this));
+    }
+
     private void sendStartupMessage() {
         Bukkit.getConsoleSender().sendMessage(ColorUtils.format(
-                "<dark_gray>[<gradient:dark_purple:yellow> Aurus </gradient><dark_gray>] [<green>✔<dark_gray>] <green>Plugin enabled!"));
+                prefix + "[<green>✔<dark_gray>] <green>Plugin enabled!"));
         Bukkit.getConsoleSender().sendMessage(ColorUtils.format(
-                "<dark_gray>[<gradient:dark_purple:yellow> Aurus </gradient><dark_gray>] [<yellow>!<dark_gray>] <gold>ty for using my plugin! <dark_gray>~ Fendrixx"));
+                prefix + "[<yellow>!<dark_gray>] <gold>ty for using my plugin! <dark_gray>~ Fendrixx"));
         Bukkit.getConsoleSender().sendMessage(ColorUtils.format("""
                 \s
                 <gradient:dark_purple:yellow>| ░█▀▀█⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀</gradient>
                 <gradient:dark_purple:yellow>| ░█▄▄█░█ ░█ █▀▀█░█ ░█░██▀▀</gradient>
                 <gradient:dark_purple:yellow>| ░█ ░█░█▄▄█ █▀█▄░█▄▄█ ▄▄█▀</gradient>
-                <dark_purple>|<gradient:dark_gray:white> - Aurus 1.0.0-BETA by Fendrixx
+                <dark_purple>|<gradient:dark_gray:white> - Aurus 1.1.0-BETA by Fendrixx
                 \s
                 """));
     }
@@ -1336,25 +2962,14 @@ public class Aurus extends JavaPlugin {
     public InputProcessor getInputProcessor() {
         return this.inputProcessor;
     }
+
+    public DebugManager getDebugManager() {
+        return this.debugManager;
+    }
 }
 
 
-FILE: ./src/main/resources/plugin.yml
-name: Aurus
-version: 1.0.0-BETA
-main: com.fendrixx.aurus.Aurus
-api-version: '1.20'
-authors: [fendrixx]
-commands:
-  aurus:
-    description: main aurus command
-    aliases: [au]
-permissions:
-  aurus.admin:
-    description: admin permission for aurus
-    default: op
-
-FILE: ./src/main/resources/config.yml
+--- FILE: ./src/main/resources/config.yml ---
 cursor:
   type: "TEXT" # ITEM, TEXT, BLOCK
   value: "<white><bold>·" # Material or text
@@ -1364,7 +2979,7 @@ cursor:
     y: 0
     z: 0
 
-FILE: ./src/main/resources/menus/welcome_server.yml
+--- FILE: ./src/main/resources/menus/welcome_server.yml ---
 welcome_server:
   components:
     title:
@@ -1374,13 +2989,13 @@ welcome_server:
       text: "<yellow>¡Welcome to <gradient:red:dark_red>MyServer.com</gradient><yellow>!"
       background: false
       x: 0.0
-      y: 2.7
+      y: 2.5
       size: 3.8
     play:
       type: "BUTTON"
       text: "Play"
       x: -3.0
-      y: 0.3
+      y: 0.1
       size: 2.0
       actions:
         # available actions in the documentation
@@ -1393,7 +3008,7 @@ welcome_server:
       type: "BUTTON"
       text: "Options"
       x: -3.0
-      y: -0.3
+      y: -0.6
       size: 1.0
       actions:
         - '[openmenu] name_menu'
@@ -1405,7 +3020,7 @@ welcome_server:
       type: "BUTTON"
       text: "<red>Quit"
       x: -3.0
-      y: -0.8
+      y: -1.1
       size: 1.0
       actions:
         - '[close]'
@@ -1418,7 +3033,7 @@ welcome_server:
       text: "<yellow>ANNOUNCE"
       background: false
       x: 3.0
-      y: 0.0
+      y: -0.3
       size: 1.5
       rotation:
         x: 0
@@ -1429,7 +3044,7 @@ welcome_server:
       text: "!New <gradient:blue:dark_blue>Cat</gradient> Cosmetic!"
       background: false
       x: 3.0
-      y: -0.4
+      y: -0.7
       size: 1.0
       rotation:
         x: 0
@@ -1437,7 +3052,7 @@ welcome_server:
         z: 0
 
 
-FILE: ./src/main/resources/menus/user_profile.yml
+--- FILE: ./src/main/resources/menus/user_profile.yml ---
 user_profile:
   update-in-ticks: 20
   components:
@@ -1463,7 +3078,7 @@ user_profile:
       actions:
         - "[close]"
 
-FILE: ./src/main/resources/menus/animated_menu.yml
+--- FILE: ./src/main/resources/menus/animated_menu.yml ---
 animated_menu:
   components:
     logo:
@@ -1497,7 +3112,7 @@ animated_menu:
       actions:
         - "[close]"
 
-FILE: ./src/main/resources/menus/name_menu.yml
+--- FILE: ./src/main/resources/menus/name_menu.yml ---
 name_menu:
   update-in-ticks: 10
   components:
@@ -1526,7 +3141,7 @@ name_menu:
       actions:
         - "[close]"
 
-FILE: ./src/main/resources/menus/pixelart.yml
+--- FILE: ./src/main/resources/menus/pixelart.yml ---
 pixelart:
   components:
     pixel_art:
@@ -1545,22 +3160,339 @@ pixelart:
       actions:
         - "[message] <gray>Art by Ooyamaneko: <aqua><click:open_url:'https://www.asciiart.eu/art/c4a5475ba0277bac'>[Click Here to go to the original art]</click>"
 
-FILE: ./target/classes/plugin.yml
+--- FILE: ./src/main/resources/paper-plugin.yml ---
 name: Aurus
-version: 1.0.0-BETA
+version: 1.1.0-BETA
 main: com.fendrixx.aurus.Aurus
 api-version: '1.20'
-authors: [fendrixx]
-commands:
-  aurus:
-    description: main aurus command
-    aliases: [au]
+authors:
+  - Fendrixx
+description: A packet based 3D menu system for modern Paper servers.
+dependencies:
+  server:
+    PlaceholderAPI:
+      load: BEFORE
+      required: false
+    packetevents:
+      load: BEFORE
+      required: true
 permissions:
   aurus.admin:
-    description: admin permission for aurus
+    description: Admin permission for Aurus
     default: op
 
-FILE: ./target/classes/config.yml
+
+--- FILE: ./.idea/modules.xml ---
+<?xml version="1.0" encoding="UTF-8"?>
+<project version="4">
+  <component name="ProjectModuleManager">
+    <modules>
+      <module fileurl="file://$PROJECT_DIR$/Aurus.iml" filepath="$PROJECT_DIR$/Aurus.iml" />
+    </modules>
+  </component>
+</project>
+
+--- FILE: ./.idea/workspace.xml ---
+<?xml version="1.0" encoding="UTF-8"?>
+<project version="4">
+  <component name="AutoImportSettings">
+    <option name="autoReloadType" value="SELECTIVE" />
+  </component>
+  <component name="ChangeListManager">
+    <list default="true" id="3330558a-a551-4727-bd8d-6a181d03427d" name="Changes" comment="fix: rendering, size and collision">
+      <change beforePath="$PROJECT_DIR$/Documentation/animations.md" beforeDir="false" afterPath="$PROJECT_DIR$/Documentation/animations.md" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/Documentation/commands.md" beforeDir="false" afterPath="$PROJECT_DIR$/Documentation/commands.md" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/Documentation/component-types.md" beforeDir="false" afterPath="$PROJECT_DIR$/Documentation/component-types.md" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/Documentation/getting-started.md" beforeDir="false" afterPath="$PROJECT_DIR$/Documentation/getting-started.md" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/Documentation/menu-configuration.md" beforeDir="false" afterPath="$PROJECT_DIR$/Documentation/menu-configuration.md" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/README.md" beforeDir="false" afterPath="$PROJECT_DIR$/README.md" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/all-files.txt" beforeDir="false" afterPath="$PROJECT_DIR$/all-files.txt" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/pom.xml" beforeDir="false" afterPath="$PROJECT_DIR$/pom.xml" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/main/java/com/fendrixx/aurus/Aurus.java" beforeDir="false" afterPath="$PROJECT_DIR$/src/main/java/com/fendrixx/aurus/Aurus.java" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/main/java/com/fendrixx/aurus/commands/AurusCommand.java" beforeDir="false" afterPath="$PROJECT_DIR$/src/main/java/com/fendrixx/aurus/commands/AurusCommand.java" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/main/java/com/fendrixx/aurus/config/ConfigHandler.java" beforeDir="false" afterPath="$PROJECT_DIR$/src/main/java/com/fendrixx/aurus/config/ConfigHandler.java" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/main/java/com/fendrixx/aurus/expansion/PAPIExpansion.java" beforeDir="false" afterPath="$PROJECT_DIR$/src/main/java/com/fendrixx/aurus/expansion/PAPIExpansion.java" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/main/java/com/fendrixx/aurus/listeners/InteractionListener.java" beforeDir="false" afterPath="$PROJECT_DIR$/src/main/java/com/fendrixx/aurus/listeners/InteractionListener.java" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/main/java/com/fendrixx/aurus/menu/Menu.java" beforeDir="false" afterPath="$PROJECT_DIR$/src/main/java/com/fendrixx/aurus/menu/Menu.java" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/main/java/com/fendrixx/aurus/menu/MenuAnimator.java" beforeDir="false" afterPath="$PROJECT_DIR$/src/main/java/com/fendrixx/aurus/menu/MenuAnimator.java" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/main/java/com/fendrixx/aurus/menu/MenuButton.java" beforeDir="false" afterPath="$PROJECT_DIR$/src/main/java/com/fendrixx/aurus/menu/MenuButton.java" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/main/java/com/fendrixx/aurus/menu/MenuCamera.java" beforeDir="false" afterPath="$PROJECT_DIR$/src/main/java/com/fendrixx/aurus/menu/MenuCamera.java" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/main/java/com/fendrixx/aurus/menu/MenuManager.java" beforeDir="false" afterPath="$PROJECT_DIR$/src/main/java/com/fendrixx/aurus/menu/MenuManager.java" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/main/java/com/fendrixx/aurus/menu/MenuRenderer.java" beforeDir="false" afterPath="$PROJECT_DIR$/src/main/java/com/fendrixx/aurus/menu/MenuRenderer.java" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/main/java/com/fendrixx/aurus/processors/ActionProcessor.java" beforeDir="false" afterPath="$PROJECT_DIR$/src/main/java/com/fendrixx/aurus/processors/ActionProcessor.java" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/main/java/com/fendrixx/aurus/processors/InputProcessor.java" beforeDir="false" afterPath="$PROJECT_DIR$/src/main/java/com/fendrixx/aurus/processors/InputProcessor.java" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/main/java/com/fendrixx/aurus/util/MathUtil.java" beforeDir="false" afterPath="$PROJECT_DIR$/src/main/java/com/fendrixx/aurus/util/MathUtil.java" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/main/resources/menus/welcome_server.yml" beforeDir="false" afterPath="$PROJECT_DIR$/src/main/resources/menus/welcome_server.yml" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/main/resources/plugin.yml" beforeDir="false" afterPath="$PROJECT_DIR$/src/main/resources/paper-plugin.yml" afterDir="false" />
+    </list>
+    <option name="SHOW_DIALOG" value="false" />
+    <option name="HIGHLIGHT_CONFLICTS" value="true" />
+    <option name="HIGHLIGHT_NON_ACTIVE_CHANGELIST" value="false" />
+    <option name="LAST_RESOLUTION" value="IGNORE" />
+  </component>
+  <component name="FileTemplateManagerImpl">
+    <option name="RECENT_TEMPLATES">
+      <list>
+        <option value="Class" />
+      </list>
+    </option>
+  </component>
+  <component name="Git.Settings">
+    <option name="RECENT_GIT_ROOT_PATH" value="$PROJECT_DIR$" />
+  </component>
+  <component name="ProblemsViewState">
+    <option name="selectedTabId" value="CurrentFile" />
+  </component>
+  <component name="ProjectColorInfo">{
+  &quot;associatedIndex&quot;: 1
+}</component>
+  <component name="ProjectId" id="39du4VBtoqoD0FXQaNSFSVO7PtU" />
+  <component name="ProjectViewState">
+    <option name="hideEmptyMiddlePackages" value="true" />
+    <option name="showLibraryContents" value="true" />
+  </component>
+  <component name="PropertiesComponent">{
+  &quot;keyToString&quot;: {
+    &quot;ModuleVcsDetector.initialDetectionPerformed&quot;: &quot;true&quot;,
+    &quot;RunOnceActivity.ShowReadmeOnStart&quot;: &quot;true&quot;,
+    &quot;RunOnceActivity.git.unshallow&quot;: &quot;true&quot;,
+    &quot;git-widget-placeholder&quot;: &quot;main&quot;,
+    &quot;jdk.selected.JDK&quot;: &quot;21&quot;,
+    &quot;kotlin-language-version-configured&quot;: &quot;true&quot;,
+    &quot;last_opened_file_path&quot;: &quot;/home/andresfelipe/Luminate/backups&quot;,
+    &quot;settings.editor.selected.configurable&quot;: &quot;preferences.pluginManager&quot;
+  },
+  &quot;keyToStringList&quot;: {
+    &quot;jdk.preference.JDK&quot;: [
+      &quot;21=/usr/lib/jvm/java&quot;
+    ]
+  }
+}</component>
+  <component name="RecentsManager">
+    <key name="CopyFile.RECENT_KEYS">
+      <recent name="$PROJECT_DIR$/backups" />
+    </key>
+  </component>
+  <component name="TaskManager">
+    <task active="true" id="Default" summary="Default task">
+      <changelist id="3330558a-a551-4727-bd8d-6a181d03427d" name="Changes" comment="" />
+      <created>1771038078667</created>
+      <option name="number" value="Default" />
+      <option name="presentableId" value="Default" />
+      <updated>1771038078667</updated>
+    </task>
+    <task id="LOCAL-00001" summary="first commit">
+      <option name="closed" value="true" />
+      <created>1771532175931</created>
+      <option name="number" value="00001" />
+      <option name="presentableId" value="LOCAL-00001" />
+      <option name="project" value="LOCAL" />
+      <updated>1771532175931</updated>
+    </task>
+    <task id="LOCAL-00002" summary="first commit">
+      <option name="closed" value="true" />
+      <created>1771532349931</created>
+      <option name="number" value="00002" />
+      <option name="presentableId" value="LOCAL-00002" />
+      <option name="project" value="LOCAL" />
+      <updated>1771532349931</updated>
+    </task>
+    <task id="LOCAL-00003" summary="first commit">
+      <option name="closed" value="true" />
+      <created>1771532489944</created>
+      <option name="number" value="00003" />
+      <option name="presentableId" value="LOCAL-00003" />
+      <option name="project" value="LOCAL" />
+      <updated>1771532489944</updated>
+    </task>
+    <task id="LOCAL-00004" summary="fixing readme and gitignore">
+      <option name="closed" value="true" />
+      <created>1771533405650</created>
+      <option name="number" value="00004" />
+      <option name="presentableId" value="LOCAL-00004" />
+      <option name="project" value="LOCAL" />
+      <updated>1771533405650</updated>
+    </task>
+    <task id="LOCAL-00005" summary="fixing literally all">
+      <option name="closed" value="true" />
+      <created>1771696255160</created>
+      <option name="number" value="00005" />
+      <option name="presentableId" value="LOCAL-00005" />
+      <option name="project" value="LOCAL" />
+      <updated>1771696255161</updated>
+    </task>
+    <task id="LOCAL-00006" summary="fixing literally all">
+      <option name="closed" value="true" />
+      <created>1771699503140</created>
+      <option name="number" value="00006" />
+      <option name="presentableId" value="LOCAL-00006" />
+      <option name="project" value="LOCAL" />
+      <updated>1771699503140</updated>
+    </task>
+    <task id="LOCAL-00007" summary="fix: display rotation">
+      <option name="closed" value="true" />
+      <created>1772393393299</created>
+      <option name="number" value="00007" />
+      <option name="presentableId" value="LOCAL-00007" />
+      <option name="project" value="LOCAL" />
+      <updated>1772393393299</updated>
+    </task>
+    <task id="LOCAL-00008" summary="fix: display">
+      <option name="closed" value="true" />
+      <created>1772396818192</created>
+      <option name="number" value="00008" />
+      <option name="presentableId" value="LOCAL-00008" />
+      <option name="project" value="LOCAL" />
+      <updated>1772396818192</updated>
+    </task>
+    <task id="LOCAL-00009" summary="fix: cursor">
+      <option name="closed" value="true" />
+      <created>1772401474939</created>
+      <option name="number" value="00009" />
+      <option name="presentableId" value="LOCAL-00009" />
+      <option name="project" value="LOCAL" />
+      <updated>1772401474939</updated>
+    </task>
+    <task id="LOCAL-00010" summary="fix: rendering, size and collision">
+      <option name="closed" value="true" />
+      <created>1772409691059</created>
+      <option name="number" value="00010" />
+      <option name="presentableId" value="LOCAL-00010" />
+      <option name="project" value="LOCAL" />
+      <updated>1772409691059</updated>
+    </task>
+    <option name="localTasksCounter" value="11" />
+    <servers />
+  </component>
+  <component name="Vcs.Log.Tabs.Properties">
+    <option name="TAB_STATES">
+      <map>
+        <entry key="MAIN">
+          <value>
+            <State>
+              <option name="FILTERS">
+                <map>
+                  <entry key="branch">
+                    <value>
+                      <list>
+                        <option value="main" />
+                      </list>
+                    </value>
+                  </entry>
+                </map>
+              </option>
+            </State>
+          </value>
+        </entry>
+      </map>
+    </option>
+  </component>
+  <component name="VcsManagerConfiguration">
+    <MESSAGE value="first commit" />
+    <MESSAGE value="fixing readme and gitignore" />
+    <MESSAGE value="fixing literally all" />
+    <MESSAGE value="fix: display rotation" />
+    <MESSAGE value="fix: display" />
+    <MESSAGE value="fix: cursor" />
+    <MESSAGE value="fix: rendering, size and collision" />
+    <option name="LAST_COMMIT_MESSAGE" value="fix: rendering, size and collision" />
+  </component>
+</project>
+
+--- FILE: ./.idea/misc.xml ---
+<?xml version="1.0" encoding="UTF-8"?>
+<project version="4">
+  <component name="ExternalStorageConfigurationManager" enabled="true" />
+  <component name="MavenProjectsManager">
+    <option name="originalFiles">
+      <list>
+        <option value="$PROJECT_DIR$/pom.xml" />
+      </list>
+    </option>
+  </component>
+  <component name="ProjectRootManager" version="2" languageLevel="JDK_21" default="true" project-jdk-name="21" project-jdk-type="JavaSDK" />
+</project>
+
+--- FILE: ./.idea/compiler.xml ---
+<?xml version="1.0" encoding="UTF-8"?>
+<project version="4">
+  <component name="CompilerConfiguration">
+    <annotationProcessing>
+      <profile name="Maven default annotation processors profile" enabled="true">
+        <sourceOutputDir name="target/generated-sources/annotations" />
+        <sourceTestOutputDir name="target/generated-test-sources/test-annotations" />
+        <outputRelativeToContentRoot value="true" />
+        <module name="Aurus" />
+      </profile>
+    </annotationProcessing>
+  </component>
+</project>
+
+--- FILE: ./.idea/encodings.xml ---
+<?xml version="1.0" encoding="UTF-8"?>
+<project version="4">
+  <component name="Encoding">
+    <file url="file://$PROJECT_DIR$/src/main/java" charset="UTF-8" />
+    <file url="file://$PROJECT_DIR$/src/main/resources" charset="UTF-8" />
+  </component>
+</project>
+
+--- FILE: ./.idea/jarRepositories.xml ---
+<?xml version="1.0" encoding="UTF-8"?>
+<project version="4">
+  <component name="RemoteRepositoriesConfiguration">
+    <remote-repository>
+      <option name="id" value="placeholderapi" />
+      <option name="name" value="placeholderapi" />
+      <option name="url" value="https://repo.helpch.at/releases/" />
+    </remote-repository>
+    <remote-repository>
+      <option name="id" value="central" />
+      <option name="name" value="Central Repository" />
+      <option name="url" value="https://repo.maven.apache.org/maven2" />
+    </remote-repository>
+    <remote-repository>
+      <option name="id" value="codemc-releases" />
+      <option name="name" value="codemc-releases" />
+      <option name="url" value="https://repo.codemc.io/repository/maven-releases/" />
+    </remote-repository>
+    <remote-repository>
+      <option name="id" value="codemc-public" />
+      <option name="name" value="codemc-public" />
+      <option name="url" value="https://repo.codemc.io/repository/maven-public/" />
+    </remote-repository>
+    <remote-repository>
+      <option name="id" value="spigotmc-repo" />
+      <option name="name" value="spigotmc-repo" />
+      <option name="url" value="https://hub.spigotmc.org/nexus/content/repositories/snapshots/" />
+    </remote-repository>
+    <remote-repository>
+      <option name="id" value="central" />
+      <option name="name" value="Maven Central repository" />
+      <option name="url" value="https://repo1.maven.org/maven2" />
+    </remote-repository>
+    <remote-repository>
+      <option name="id" value="jboss.community" />
+      <option name="name" value="JBoss Community repository" />
+      <option name="url" value="https://repository.jboss.org/nexus/content/repositories/public/" />
+    </remote-repository>
+    <remote-repository>
+      <option name="id" value="papermc" />
+      <option name="name" value="papermc" />
+      <option name="url" value="https://repo.papermc.io/repository/maven-public/" />
+    </remote-repository>
+  </component>
+</project>
+
+--- FILE: ./.idea/vcs.xml ---
+<?xml version="1.0" encoding="UTF-8"?>
+<project version="4">
+  <component name="VcsDirectoryMappings">
+    <mapping directory="$PROJECT_DIR$" vcs="Git" />
+  </component>
+</project>
+
+--- FILE: ./target/classes/config.yml ---
 cursor:
   type: "TEXT" # ITEM, TEXT, BLOCK
   value: "<white><bold>·" # Material or text
@@ -1570,7 +3502,7 @@ cursor:
     y: 0
     z: 0
 
-FILE: ./target/classes/menus/welcome_server.yml
+--- FILE: ./target/classes/menus/welcome_server.yml ---
 welcome_server:
   components:
     title:
@@ -1580,13 +3512,13 @@ welcome_server:
       text: "<yellow>¡Welcome to <gradient:red:dark_red>MyServer.com</gradient><yellow>!"
       background: false
       x: 0.0
-      y: 2.7
+      y: 2.5
       size: 3.8
     play:
       type: "BUTTON"
       text: "Play"
       x: -3.0
-      y: 0.3
+      y: 0.1
       size: 2.0
       actions:
         # available actions in the documentation
@@ -1599,7 +3531,7 @@ welcome_server:
       type: "BUTTON"
       text: "Options"
       x: -3.0
-      y: -0.3
+      y: -0.6
       size: 1.0
       actions:
         - '[openmenu] name_menu'
@@ -1611,7 +3543,7 @@ welcome_server:
       type: "BUTTON"
       text: "<red>Quit"
       x: -3.0
-      y: -0.8
+      y: -1.1
       size: 1.0
       actions:
         - '[close]'
@@ -1624,7 +3556,7 @@ welcome_server:
       text: "<yellow>ANNOUNCE"
       background: false
       x: 3.0
-      y: 0.0
+      y: -0.3
       size: 1.5
       rotation:
         x: 0
@@ -1635,7 +3567,7 @@ welcome_server:
       text: "!New <gradient:blue:dark_blue>Cat</gradient> Cosmetic!"
       background: false
       x: 3.0
-      y: -0.4
+      y: -0.7
       size: 1.0
       rotation:
         x: 0
@@ -1643,7 +3575,7 @@ welcome_server:
         z: 0
 
 
-FILE: ./target/classes/menus/user_profile.yml
+--- FILE: ./target/classes/menus/user_profile.yml ---
 user_profile:
   update-in-ticks: 20
   components:
@@ -1669,7 +3601,7 @@ user_profile:
       actions:
         - "[close]"
 
-FILE: ./target/classes/menus/animated_menu.yml
+--- FILE: ./target/classes/menus/animated_menu.yml ---
 animated_menu:
   components:
     logo:
@@ -1703,7 +3635,7 @@ animated_menu:
       actions:
         - "[close]"
 
-FILE: ./target/classes/menus/name_menu.yml
+--- FILE: ./target/classes/menus/name_menu.yml ---
 name_menu:
   update-in-ticks: 10
   components:
@@ -1732,7 +3664,7 @@ name_menu:
       actions:
         - "[close]"
 
-FILE: ./target/classes/menus/pixelart.yml
+--- FILE: ./target/classes/menus/pixelart.yml ---
 pixelart:
   components:
     pixel_art:
@@ -1750,4 +3682,256 @@ pixelart:
       size: 0.6
       actions:
         - "[message] <gray>Art by Ooyamaneko: <aqua><click:open_url:'https://www.asciiart.eu/art/c4a5475ba0277bac'>[Click Here to go to the original art]</click>"
+
+--- FILE: ./target/classes/paper-plugin.yml ---
+name: Aurus
+version: 1.1.0-BETA
+main: com.fendrixx.aurus.Aurus
+api-version: '1.20'
+authors:
+  - Fendrixx
+description: A packet based 3D menu system for modern Paper servers.
+dependencies:
+  server:
+    PlaceholderAPI:
+      load: BEFORE
+      required: false
+    packetevents:
+      load: BEFORE
+      required: true
+permissions:
+  aurus.admin:
+    description: Admin permission for Aurus
+    default: op
+
+
+--- FILE: ./pom.xml ---
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
+    <modelVersion>4.0.0</modelVersion>
+
+    <groupId>com.fendrixx</groupId>
+    <artifactId>Aurus</artifactId>
+    <version>1.1.0-BETA</version>
+    <packaging>jar</packaging>
+
+    <properties>
+        <maven.compiler.source>17</maven.compiler.source>
+        <maven.compiler.target>17</maven.compiler.target>
+        <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
+        <project.reporting.outputEncoding>UTF-8</project.reporting.outputEncoding>
+    </properties>
+
+    <repositories>
+        <repository>
+            <id>placeholderapi</id>
+            <url>https://repo.helpch.at/releases/</url>
+        </repository>
+        <repository>
+            <id>codemc-releases</id>
+            <url>https://repo.codemc.io/repository/maven-releases/</url>
+        </repository>
+        <repository>
+            <id>papermc</id>
+            <url>https://repo.papermc.io/repository/maven-public/</url>
+        </repository>
+    </repositories>
+
+    <dependencies>
+        <dependency>
+            <groupId>io.papermc.paper</groupId>
+            <artifactId>paper-api</artifactId>
+            <version>1.20.1-R0.1-SNAPSHOT</version>
+            <scope>provided</scope>
+        </dependency>
+
+
+        <dependency>
+            <groupId>io.github.revxrsal</groupId>
+            <artifactId>lamp.common</artifactId>
+            <version>4.0.0-rc.14</version>
+        </dependency>
+
+        <dependency>
+            <groupId>io.github.revxrsal</groupId>
+            <artifactId>lamp.bukkit</artifactId>
+            <version>4.0.0-rc.14</version>
+        </dependency>
+
+        <dependency>
+            <groupId>io.github.revxrsal</groupId>
+            <artifactId>lamp.bukkit</artifactId>
+            <version>4.0.0-rc.14</version>
+        </dependency>
+
+        <dependency>
+            <groupId>net.kyori</groupId>
+            <artifactId>adventure-api</artifactId>
+            <version>4.26.1</version>
+        </dependency>
+
+        <dependency>
+            <groupId>net.kyori</groupId>
+            <artifactId>adventure-platform-bukkit</artifactId>
+            <version>4.3.4</version>
+        </dependency>
+
+        <dependency>
+            <groupId>net.kyori</groupId>
+            <artifactId>adventure-text-serializer-legacy</artifactId>
+            <version>4.17.0</version>
+            <scope>provided</scope>
+        </dependency>
+
+        <dependency>
+            <groupId>net.kyori</groupId>
+            <artifactId>adventure-text-minimessage</artifactId>
+            <version>4.17.0</version>
+            <scope>provided</scope>
+        </dependency>
+
+        <dependency>
+            <groupId>me.clip</groupId>
+            <artifactId>placeholderapi</artifactId>
+            <version>2.12.2</version>
+            <scope>provided</scope>
+        </dependency>
+
+        <dependency>
+            <groupId>net.objecthunter</groupId>
+            <artifactId>exp4j</artifactId>
+            <version>0.4.8</version>
+        </dependency>
+
+        <dependency>
+            <groupId>com.github.retrooper</groupId>
+            <artifactId>packetevents-spigot</artifactId>
+            <version>2.11.2</version>
+            <scope>provided</scope>
+        </dependency>
+
+    </dependencies>
+
+    <build>
+        <plugins>
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-shade-plugin</artifactId>
+                <version>3.5.0</version>
+                <executions>
+                    <execution>
+                        <phase>package</phase>
+                        <goals>
+                            <goal>shade</goal>
+                        </goals>
+                        <configuration>
+                            <relocations>
+                                <relocation>
+                                    <pattern>net.objecthunter</pattern>
+                                    <shadedPattern>com.fendrixx.aurus.libs.exp4j</shadedPattern>
+                                </relocation>
+                                <relocation>
+                                    <pattern>io.github.revxrsal.lamp</pattern>
+                                    <shadedPattern>com.fendrixx.aurus.libs.lamp</shadedPattern>
+                                </relocation>
+                            </relocations>
+                        </configuration>
+                    </execution>
+                </executions>
+            </plugin>
+        </plugins>
+    </build>
+</project>
+
+--- FILE: ./dependency-reduced-pom.xml ---
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/maven-v4_0_0.xsd">
+  <modelVersion>4.0.0</modelVersion>
+  <groupId>com.fendrixx</groupId>
+  <artifactId>Aurus</artifactId>
+  <version>1.1.0-BETA</version>
+  <build>
+    <plugins>
+      <plugin>
+        <artifactId>maven-shade-plugin</artifactId>
+        <version>3.5.0</version>
+        <executions>
+          <execution>
+            <phase>package</phase>
+            <goals>
+              <goal>shade</goal>
+            </goals>
+            <configuration>
+              <relocations>
+                <relocation>
+                  <pattern>net.objecthunter</pattern>
+                  <shadedPattern>com.fendrixx.aurus.libs.exp4j</shadedPattern>
+                </relocation>
+                <relocation>
+                  <pattern>io.github.revxrsal.lamp</pattern>
+                  <shadedPattern>com.fendrixx.aurus.libs.lamp</shadedPattern>
+                </relocation>
+              </relocations>
+            </configuration>
+          </execution>
+        </executions>
+      </plugin>
+    </plugins>
+  </build>
+  <repositories>
+    <repository>
+      <id>placeholderapi</id>
+      <url>https://repo.helpch.at/releases/</url>
+    </repository>
+    <repository>
+      <id>codemc-releases</id>
+      <url>https://repo.codemc.io/repository/maven-releases/</url>
+    </repository>
+    <repository>
+      <id>papermc</id>
+      <url>https://repo.papermc.io/repository/maven-public/</url>
+    </repository>
+  </repositories>
+  <dependencies>
+    <dependency>
+      <groupId>io.papermc.paper</groupId>
+      <artifactId>paper-api</artifactId>
+      <version>1.20.1-R0.1-SNAPSHOT</version>
+      <scope>provided</scope>
+    </dependency>
+    <dependency>
+      <groupId>net.kyori</groupId>
+      <artifactId>adventure-text-serializer-legacy</artifactId>
+      <version>4.17.0</version>
+      <scope>provided</scope>
+    </dependency>
+    <dependency>
+      <groupId>net.kyori</groupId>
+      <artifactId>adventure-text-minimessage</artifactId>
+      <version>4.17.0</version>
+      <scope>provided</scope>
+    </dependency>
+    <dependency>
+      <groupId>me.clip</groupId>
+      <artifactId>placeholderapi</artifactId>
+      <version>2.12.2</version>
+      <scope>provided</scope>
+    </dependency>
+    <dependency>
+      <groupId>com.github.retrooper</groupId>
+      <artifactId>packetevents-spigot</artifactId>
+      <version>2.11.2</version>
+      <scope>provided</scope>
+    </dependency>
+  </dependencies>
+  <properties>
+    <maven.compiler.target>17</maven.compiler.target>
+    <maven.compiler.source>17</maven.compiler.source>
+    <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
+    <project.reporting.outputEncoding>UTF-8</project.reporting.outputEncoding>
+  </properties>
+</project>
+
 

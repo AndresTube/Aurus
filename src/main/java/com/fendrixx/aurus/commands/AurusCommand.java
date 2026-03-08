@@ -1,94 +1,89 @@
 package com.fendrixx.aurus.commands;
 
 import com.fendrixx.aurus.Aurus;
+import com.fendrixx.aurus.util.ColorUtils;
+import revxrsal.commands.annotation.Command;
+import revxrsal.commands.annotation.Optional;
+import revxrsal.commands.bukkit.actor.BukkitCommandActor;
+import revxrsal.commands.annotation.Subcommand;
+import revxrsal.commands.bukkit.annotation.CommandPermission;
 import net.kyori.adventure.text.minimessage.MiniMessage;
-import org.bukkit.command.Command;
-import org.bukkit.command.CommandExecutor;
-import org.bukkit.command.CommandSender;
-import org.bukkit.command.TabCompleter;
 import org.bukkit.entity.Player;
-import org.jetbrains.annotations.NotNull;
 
-import java.util.ArrayList;
-import java.util.List;
+@Command("aurus")
+public class AurusCommand {
 
-public class AurusCommand implements CommandExecutor, TabCompleter {
+    private static final MiniMessage MM = MiniMessage.miniMessage();
+    private static final String PREFIX = "<dark_gray>[<gradient:dark_purple:yellow> Aurus </gradient><dark_gray>] ";
+
     private final Aurus plugin;
-    private final MiniMessage mm = MiniMessage.miniMessage();
-    private final String prefix = "<dark_gray>[<gradient:dark_purple:yellow> Aurus </gradient><dark_gray>] ";
 
     public AurusCommand(Aurus plugin) {
         this.plugin = plugin;
     }
 
-    @Override
-    public boolean onCommand(@NotNull CommandSender sender, @NotNull Command command, @NotNull String label,
-            String[] args) {
-        if (!(sender instanceof Player player))
-            return true;
-
-        if (!player.hasPermission("aurus.admin")) {
-            plugin.adventure().player(player).sendMessage(
-                    mm.deserialize(prefix + "<dark_gray>[<red>✘<dark_gray>] <red>You do not have permission."));
-            return true;
-        }
-
-        if (args.length > 0) {
-            if (args[0].equalsIgnoreCase("open")) {
-                if (args.length < 2) {
-                    plugin.adventure().player(player).sendMessage(mm.deserialize(
-                            prefix + "<dark_gray>[<yellow>?<dark_gray>] <gray>Usage: /aurus open <menu_id>"));
-                    return true;
-                }
-
-                String menuId = args[1];
-                if (plugin.getConfigHandler().getMenuSection(menuId) == null) {
-                    plugin.adventure().player(player).sendMessage(mm.deserialize(prefix
-                            + "<dark_gray>[<red>✘<dark_gray>] <red>Menu <yellow>" + menuId + "</yellow> not found."));
-                    return true;
-                }
-
-                plugin.getMenuManager().openMenu(player, menuId);
-                return true;
-            }
-
-            if (args[0].equalsIgnoreCase("reload")) {
-                plugin.getMenuManager().closeAll();
-                plugin.getConfigHandler().reload();
-                plugin.adventure().player(player).sendMessage(mm.deserialize(
-                        prefix + "<dark_gray>[<green>✔<dark_gray>] <green>Configuration and menus reloaded."));
-                return true;
-            }
-
-            if (args[0].equalsIgnoreCase("close")) {
-                if (plugin.getMenuManager().getActiveMenu(player.getUniqueId()) != null) {
-                    plugin.getMenuManager().closeMenu(player);
-                    plugin.adventure().player(player).sendMessage(
-                            mm.deserialize(prefix + "<dark_gray>[<green>✔<dark_gray>] <green>Menu closed."));
-                } else {
-                    plugin.adventure().player(player).sendMessage(mm.deserialize(
-                            prefix + "<dark_gray>[<yellow>!<dark_gray>] <red>You don't have an active menu."));
-                }
-                return true;
-            }
-        }
-
-        plugin.adventure().player(player).sendMessage(mm.deserialize(
-                prefix + "<dark_gray>[<yellow>?<dark_gray>] <gray>Available commands: <white>open, close, reload"));
-        return true;
+    @Command("aurus")
+    public void defaultCommand(BukkitCommandActor actor) {
+        actor.reply(MM.deserialize(PREFIX + "<dark_gray>[<yellow>?<dark_gray>] <gray>Available commands: <white>open, close, reload, debug"));
     }
 
-    @Override
-    public List<String> onTabComplete(@NotNull CommandSender sender, @NotNull Command command, @NotNull String alias,
-            String[] args) {
-        List<String> suggestions = new ArrayList<>();
-        if (args.length == 1) {
-            suggestions.addAll(List.of("open", "reload", "close"));
-        } else if (args.length == 2 && args[0].equalsIgnoreCase("open")) {
-            suggestions.addAll(plugin.getConfigHandler().getMenuKeys());
+    @Subcommand("open")
+    @CommandPermission("aurus.admin")
+    public void openMenu(BukkitCommandActor actor, String menuId, @Optional Player target) {
+        if (!actor.isPlayer()) return;
+        Player sender = actor.asPlayer();
+
+        if (plugin.getConfigHandler().getMenuSection(menuId) == null) {
+            actor.reply(MM.deserialize(PREFIX + "<dark_gray>[<red>✘<dark_gray>] <red>Menu <yellow>" + menuId + "</yellow> not found."));
+            return;
         }
 
-        String lastArg = args[args.length - 1].toLowerCase();
-        return suggestions.stream().filter(s -> s.toLowerCase().startsWith(lastArg)).toList();
+        Player targetPlayer = (target != null) ? target : sender;
+        plugin.getMenuManager().openMenu(targetPlayer, menuId);
+
+        if (!targetPlayer.equals(sender)) {
+            actor.reply(MM.deserialize(PREFIX + "<dark_gray>[<green>✔<dark_gray>] <green>Opened <yellow>" + menuId + "</yellow> for <yellow>" + targetPlayer.getName() + "</yellow>."));
+        }
+    }
+
+    @Subcommand("reload")
+    @CommandPermission("aurus.admin")
+    public void reload(BukkitCommandActor actor) {
+        plugin.getMenuManager().closeAll();
+        plugin.getConfigHandler().reload();
+        actor.reply(MM.deserialize(PREFIX + "<dark_gray>[<green>✔<dark_gray>] <green>Configuration and menus reloaded."));
+    }
+
+    @Subcommand("close")
+    @CommandPermission("aurus.admin")
+    public void closeMenu(BukkitCommandActor actor, @Optional Player target) {
+        if (!actor.isPlayer()) return;
+        Player sender = actor.asPlayer();
+        Player targetPlayer = (target != null) ? target : sender;
+
+        if (plugin.getMenuManager().getActiveMenu(targetPlayer.getUniqueId()) != null) {
+            plugin.getMenuManager().closeMenu(targetPlayer);
+            actor.reply(MM.deserialize(PREFIX + "<dark_gray>[<green>✔<dark_gray>] <green>Menu closed for <yellow>" + targetPlayer.getName() + "</yellow>."));
+        } else {
+            actor.reply(MM.deserialize(PREFIX + "<dark_gray>[<yellow>!<dark_gray>] <red>No active menu found."));
+        }
+    }
+
+    @Subcommand("debug")
+    @CommandPermission("aurus.admin")
+    public void toggleDebug(BukkitCommandActor actor) {
+        if (!actor.isPlayer()) {
+            actor.reply(ColorUtils.format(PREFIX + "This command only can be used by players"));
+            return;
+        }
+
+        Player player = actor.asPlayer();
+        boolean nowEnabled = plugin.getDebugManager().toggle(player.getUniqueId());
+
+        if (nowEnabled) {
+            actor.reply(MM.deserialize(PREFIX + "<dark_gray>[<aqua>⚙<dark_gray>] <green>Debug enabled"));
+        } else {
+            actor.reply(MM.deserialize(PREFIX + "<dark_gray>[<aqua>⚙<dark_gray>] <red>Debug disabled"));
+        }
     }
 }

@@ -4,9 +4,10 @@
 
 | Command | Description |
 |---|---|
-| `/au open <menu_id>` | Opens a menu for the sender |
+| `/au open <menu_id> [player]` | Opens a menu for yourself or a target player |
+| `/au close [player]` | Closes the active menu for yourself or a target player |
 | `/au reload` | Reloads all menu files and config |
-| `/au list` | Lists all loaded menu IDs |
+| `/au debug` | Toggles debug mode — logs button clicks, actions, and input events to console |
 
 Alias: `/aurus`
 
@@ -22,14 +23,20 @@ Alias: `/aurus`
 
 ```yaml
 cursor:
-  value: "●"         # The character shown as the cursor
-  size: 1.0          # Size of the cursor entity
+  type: TEXT
+  value: "●"
+  size: 1.0
 ```
 
-You can use any unicode character or MiniMessage-formatted string as the cursor value.
+| Key | Type | Default | Description |
+|---|---|---|---|
+| `type` | string | `TEXT` | Cursor display type: `TEXT`, `ITEM`, or `BLOCK` |
+| `value` | string | `●` | The character (for TEXT), material name (for ITEM/BLOCK). Supports PAPI placeholders |
+| `size` | double | `1.0` | Scale of the cursor |
 
 ```yaml
 cursor:
-  value: "<red>✦"
-  size: 1.2
+  type: ITEM
+  value: ARROW
+  size: 0.5
 ```

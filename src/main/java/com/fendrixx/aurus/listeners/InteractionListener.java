@@ -4,7 +4,6 @@ import com.fendrixx.aurus.Aurus;
 import com.fendrixx.aurus.menu.Menu;
 import com.fendrixx.aurus.menu.MenuButton;
 import com.fendrixx.aurus.util.MathUtil;
-import org.bukkit.Sound;
 import org.bukkit.entity.Player;
 import org.bukkit.event.EventHandler;
 import org.bukkit.event.Listener;
@@ -79,11 +78,25 @@ public class InteractionListener implements Listener {
             double d2 = Math.sqrt(dx * dx + dy * dy);
 
             if (d2 < hitRadius) {
+                if (plugin.getDebugManager().isEnabled(player.getUniqueId())) {
+                    plugin.getDebugManager().log(player.getName() + " clicked [" + btn.getType() + "] at (" +
+                            btn.getBaseX() + ", " + btn.getBaseY() + ") actions=" +
+                            btn.getConfig().getStringList("actions"));
+                }
                 if ("INPUT".equalsIgnoreCase(btn.getType())) {
-                    plugin.getInputProcessor().startInput(player, btn.getVariableName());
+                    plugin.getInputProcessor().startInput(player, btn.getVariableName(),
+                            btn.getConfig().getString("fallback-message"));
+                    if (plugin.getDebugManager().isEnabled(player.getUniqueId())) {
+                        plugin.getDebugManager().log("  INPUT variable=" + btn.getVariableName());
+                    }
                 }
                 btn.onClick();
-                player.playSound(player.getLocation(), Sound.UI_BUTTON_CLICK, 0.6f, 1.2f);
+                try {
+                    String clicksound = btn.getConfig().getString("sound", "minecraft:ui.button.click");
+                    if (!clicksound.contains(":")) clicksound = "minecraft:" + clicksound;
+                    player.playSound(player.getLocation(), clicksound, 0.6f, 1.2f);
+                } catch (Exception ignored) {
+                }
                 break;
             }
         }

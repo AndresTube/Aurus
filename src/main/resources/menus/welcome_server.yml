@@ -7,13 +7,13 @@ welcome_server:
       text: "<yellow>¡Welcome to <gradient:red:dark_red>MyServer.com</gradient><yellow>!"
       background: false
       x: 0.0
-      y: 2.7
+      y: 2.5
       size: 3.8
     play:
       type: "BUTTON"
       text: "Play"
       x: -3.0
-      y: 0.3
+      y: 0.1
       size: 2.0
       actions:
         # available actions in the documentation
@@ -26,7 +26,7 @@ welcome_server:
       type: "BUTTON"
       text: "Options"
       x: -3.0
-      y: -0.3
+      y: -0.6
       size: 1.0
       actions:
         - '[openmenu] name_menu'
@@ -38,7 +38,7 @@ welcome_server:
       type: "BUTTON"
       text: "<red>Quit"
       x: -3.0
-      y: -0.8
+      y: -1.1
       size: 1.0
       actions:
         - '[close]'
@@ -51,7 +51,7 @@ welcome_server:
       text: "<yellow>ANNOUNCE"
       background: false
       x: 3.0
-      y: 0.0
+      y: -0.3
       size: 1.5
       rotation:
         x: 0
@@ -62,7 +62,7 @@ welcome_server:
       text: "!New <gradient:blue:dark_blue>Cat</gradient> Cosmetic!"
       background: false
       x: 3.0
-      y: -0.4
+      y: -0.7
       size: 1.0
       rotation:
         x: 0

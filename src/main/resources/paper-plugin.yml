@@ -1,0 +1,19 @@
+name: Aurus
+version: 1.1.0-BETA
+main: com.fendrixx.aurus.Aurus
+api-version: '1.20'
+authors:
+  - Fendrixx
+description: A packet based 3D menu system for modern Paper servers.
+dependencies:
+  server:
+    PlaceholderAPI:
+      load: BEFORE
+      required: false
+    packetevents:
+      load: BEFORE
+      required: true
+permissions:
+  aurus.admin:
+    description: Admin permission for Aurus
+    default: op

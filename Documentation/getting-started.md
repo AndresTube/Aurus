@@ -6,11 +6,12 @@
 |---|---|
 | Minecraft Spigot / Paper Server | 1.20.1 + |
 | Java | 17 + |
+| PacketEvents | 2.x (bundled) |
 | PlaceholderAPI *(optional)* | Any |
 
 ## Installation
 
-1. Drop `Aurus-1.0.0-BETA.jar` into your `plugins/` folder.
+1. Drop `Aurus-1.1.0-BETA.jar` into your `plugins/` folder.
 2. Start the server — default menus are created in `plugins/Aurus/menus/`.
 3. Open a menu in-game:
 
@@ -27,8 +28,16 @@ plugins/
     menus/
       welcome_server.yml
       user_profile.yml
+      name_menu.yml
+      animated_menu.yml
+      pixelart.yml
       ...
 ```
+
+## Dependencies
+
+- **PacketEvents** — used internally for entity rendering and interaction handling. Shaded into the plugin jar, no separate installation needed.
+- **PlaceholderAPI** — optional. Enables `%placeholder%` support in text fields and actions, and exposes `%aurus_variable_<name>%` for INPUT variables.
 
 ---
 

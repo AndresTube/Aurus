@@ -1,30 +1,69 @@
 package com.fendrixx.aurus.menu;
 
+import com.fendrixx.aurus.packets.FakeEntityFactory;
 import com.fendrixx.aurus.util.MathUtil;
+import net.objecthunter.exp4j.Expression;
 import org.bukkit.Location;
 import org.bukkit.configuration.ConfigurationSection;
-import org.bukkit.entity.Display;
 import org.bukkit.entity.Player;
 import org.bukkit.scheduler.BukkitRunnable;
-import org.bukkit.util.Transformation;
 
+import java.util.ArrayList;
 import java.util.List;
 
 public class MenuAnimator extends BukkitRunnable {
     private final Menu menu;
     private final Player player;
-    private final List<MenuButton> buttons;
     private final double distance;
     private final int updateDelay;
+    private final List<MenuButton> allButtons;
+    private final List<AnimatedEntry> animatedEntries;
+    private final boolean hasAnimations;
     private double ticks = 0;
     private int updateCounter = 0;
+
+    private record AnimatedEntry(
+            MenuButton button,
+            float baseSize,
+            double baseX, double baseY, double baseZ,
+            Expression scaleExpr,
+            Expression rotExpr,
+            Expression xExpr, Expression yExpr, Expression zExpr,
+            boolean hasTransform, boolean hasPosition
+    ) {}
 
     public MenuAnimator(Menu menu, Player player, List<MenuButton> buttons, double distance, int updateDelay) {
         this.menu = menu;
         this.player = player;
-        this.buttons = buttons;
+        this.allButtons = buttons;
         this.distance = distance;
         this.updateDelay = updateDelay;
+
+        List<AnimatedEntry> entries = new ArrayList<>();
+        for (MenuButton btn : buttons) {
+            ConfigurationSection conf = btn.getConfig();
+            ConfigurationSection anim = conf.getConfigurationSection("animations");
+            if (anim == null) continue;
+
+            Expression scaleExpr = anim.contains("scale-formula") ? MathUtil.compile(anim.getString("scale-formula")) : null;
+            Expression rotExpr = anim.contains("rotation-formula") ? MathUtil.compile(anim.getString("rotation-formula")) : null;
+            Expression xExpr = anim.contains("x-formula") ? MathUtil.compile(anim.getString("x-formula")) : null;
+            Expression yExpr = anim.contains("y-formula") ? MathUtil.compile(anim.getString("y-formula")) : null;
+            Expression zExpr = anim.contains("z-formula") ? MathUtil.compile(anim.getString("z-formula")) : null;
+
+            boolean hasTransform = scaleExpr != null || rotExpr != null;
+            boolean hasPosition = xExpr != null || yExpr != null || zExpr != null;
+
+            if (hasTransform || hasPosition) {
+                entries.add(new AnimatedEntry(btn,
+                        (float) conf.getDouble("size", 1.0),
+                        conf.getDouble("x", 0.0), conf.getDouble("y", 0.0), btn.getBaseZ(),
+                        scaleExpr, rotExpr, xExpr, yExpr, zExpr,
+                        hasTransform, hasPosition));
+            }
+        }
+        this.animatedEntries = entries;
+        this.hasAnimations = !entries.isEmpty();
     }
 
     @Override
@@ -34,59 +73,35 @@ public class MenuAnimator extends BukkitRunnable {
             return;
         }
 
-        ticks += 0.05;
-
-        for (MenuButton btn : buttons) {
-            ConfigurationSection conf = btn.getConfig();
-            ConfigurationSection anim = conf.getConfigurationSection("animations");
-            if (anim == null)
-                continue;
-
-            Display display = btn.getDisplay();
-            Transformation trans = display.getTransformation();
-            boolean changed = false;
-
-            if (anim.contains("scale-formula")) {
-                float s = (float) MathUtil.evaluate(anim.getString("scale-formula"), ticks);
-                trans.getScale().set(s, s, s);
-                changed = true;
-            }
-
-            if (anim.contains("rotation-formula")) {
-                float r = (float) Math.toRadians(MathUtil.evaluate(anim.getString("rotation-formula"), ticks));
-                trans.getLeftRotation().identity().rotateZ(r);
-                changed = true;
-            }
-
-            if (anim.contains("x-formula") || anim.contains("y-formula")) {
-                double rx = anim.contains("x-formula") ? MathUtil.evaluate(anim.getString("x-formula"), ticks) : 0;
-                double ry = anim.contains("y-formula") ? MathUtil.evaluate(anim.getString("y-formula"), ticks) : 0;
-                double baseX = conf.getDouble("x", 0.0);
-                double baseY = conf.getDouble("y", 0.0);
-
-                Location offsetLoc = menu.calculateComponentLocation(baseX + rx, baseY + ry);
-                display.teleport(offsetLoc);
-            }
-
-            if (changed) {
-                display.setInterpolationDuration(1);
-                display.setInterpolationDelay(0);
-                display.setTransformation(trans);
+        if (hasAnimations) {
+            ticks += 0.05;
+            for (AnimatedEntry e : animatedEntries) {
+                if (e.hasPosition) {
+                    double rx = e.xExpr != null ? e.xExpr.setVariable("t", ticks).evaluate() : 0;
+                    double ry = e.yExpr != null ? e.yExpr.setVariable("t", ticks).evaluate() : 0;
+                    double rz = e.zExpr != null ? e.zExpr.setVariable("t", ticks).evaluate() : 0;
+                    Location loc = menu.calculateComponentLocation(e.baseX + rx, e.baseY + ry, e.baseZ + rz);
+                    FakeEntityFactory.teleportEntity(player, e.button.getEntityId(), loc);
+                }
+                if (e.hasTransform) {
+                    float scale = e.scaleExpr != null ? (float) e.scaleExpr.setVariable("t", ticks).evaluate() : e.baseSize;
+                    float rotZ = e.rotExpr != null ? (float) e.rotExpr.setVariable("t", ticks).evaluate() : 0;
+                    FakeEntityFactory.setDisplayTransform(player, e.button.getEntityId(), scale, 0, 0, rotZ);
+                }
             }
         }
 
-        Location newCursorPos = MathUtil.getCursorLocation(
+        Location playerLoc = player.getLocation();
+        Location newCursorPos = menu.getBasis().getCursorLocation(
                 menu.getMenuOrigin(),
-                menu.getSpawnYaw(),
-                menu.getSpawnPitch(),
-                player.getLocation().getYaw(),
-                player.getLocation().getPitch(),
+                playerLoc.getYaw(),
+                playerLoc.getPitch(),
                 distance);
         menu.getCursor().teleport(newCursorPos);
 
         updateCounter++;
         if (updateCounter >= updateDelay) {
-            buttons.forEach(b -> b.updateText(player));
+            allButtons.forEach(b -> b.updateText(player));
             updateCounter = 0;
         }
     }

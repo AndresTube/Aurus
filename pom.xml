@@ -6,7 +6,7 @@
 
     <groupId>com.fendrixx</groupId>
     <artifactId>Aurus</artifactId>
-    <version>1.0.0-BETA</version>
+    <version>1.1.0-BETA</version>
     <packaging>jar</packaging>
 
     <properties>
@@ -18,10 +18,6 @@
 
     <repositories>
         <repository>
-            <id>spigotmc-repo</id>
-            <url>https://hub.spigotmc.org/nexus/content/repositories/snapshots/</url>
-        </repository>
-        <repository>
             <id>placeholderapi</id>
             <url>https://repo.helpch.at/releases/</url>
         </repository>
@@ -29,16 +25,45 @@
             <id>codemc-releases</id>
             <url>https://repo.codemc.io/repository/maven-releases/</url>
         </repository>
+        <repository>
+            <id>papermc</id>
+            <url>https://repo.papermc.io/repository/maven-public/</url>
+        </repository>
     </repositories>
 
     <dependencies>
         <dependency>
-            <groupId>org.spigotmc</groupId>
-            <artifactId>spigot-api</artifactId>
+            <groupId>io.papermc.paper</groupId>
+            <artifactId>paper-api</artifactId>
             <version>1.20.1-R0.1-SNAPSHOT</version>
             <scope>provided</scope>
         </dependency>
-        
+
+
+        <dependency>
+            <groupId>io.github.revxrsal</groupId>
+            <artifactId>lamp.common</artifactId>
+            <version>4.0.0-rc.14</version>
+        </dependency>
+
+        <dependency>
+            <groupId>io.github.revxrsal</groupId>
+            <artifactId>lamp.bukkit</artifactId>
+            <version>4.0.0-rc.14</version>
+        </dependency>
+
+        <dependency>
+            <groupId>io.github.revxrsal</groupId>
+            <artifactId>lamp.bukkit</artifactId>
+            <version>4.0.0-rc.14</version>
+        </dependency>
+
+        <dependency>
+            <groupId>net.kyori</groupId>
+            <artifactId>adventure-api</artifactId>
+            <version>4.26.1</version>
+        </dependency>
+
         <dependency>
             <groupId>net.kyori</groupId>
             <artifactId>adventure-platform-bukkit</artifactId>
@@ -49,12 +74,14 @@
             <groupId>net.kyori</groupId>
             <artifactId>adventure-text-serializer-legacy</artifactId>
             <version>4.17.0</version>
+            <scope>provided</scope>
         </dependency>
 
         <dependency>
             <groupId>net.kyori</groupId>
             <artifactId>adventure-text-minimessage</artifactId>
             <version>4.17.0</version>
+            <scope>provided</scope>
         </dependency>
 
         <dependency>
@@ -74,6 +101,7 @@
             <groupId>com.github.retrooper</groupId>
             <artifactId>packetevents-spigot</artifactId>
             <version>2.11.2</version>
+            <scope>provided</scope>
         </dependency>
 
     </dependencies>
@@ -92,18 +120,13 @@
                         </goals>
                         <configuration>
                             <relocations>
-
                                 <relocation>
                                     <pattern>net.objecthunter</pattern>
                                     <shadedPattern>com.fendrixx.aurus.libs.exp4j</shadedPattern>
                                 </relocation>
                                 <relocation>
-                                    <pattern>com.github.retrooper.packetevents</pattern>
-                                    <shadedPattern>com.fendrixx.aurus.libs.packetevents.api</shadedPattern>
-                                </relocation>
-                                <relocation>
-                                    <pattern>io.github.retrooper.packetevents</pattern>
-                                    <shadedPattern>com.fendrixx.aurus.libs.packetevents.impl</shadedPattern>
+                                    <pattern>io.github.revxrsal.lamp</pattern>
+                                    <shadedPattern>com.fendrixx.aurus.libs.lamp</shadedPattern>
                                 </relocation>
                             </relocations>
                         </configuration>

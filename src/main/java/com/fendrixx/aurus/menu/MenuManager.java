@@ -2,7 +2,6 @@ package com.fendrixx.aurus.menu;
 
 import com.fendrixx.aurus.Aurus;
 import org.bukkit.entity.Player;
-import org.bukkit.scheduler.BukkitRunnable;
 
 import java.util.HashMap;
 import java.util.Map;
@@ -37,6 +36,10 @@ public class MenuManager {
 
     public void removeMenu(UUID uuid) {
         activeMenus.remove(uuid);
+    }
+
+    public Map<UUID, Menu> getActiveMenusMap() {
+        return activeMenus;
     }
 
     public void closeAll() {

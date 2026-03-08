@@ -1,6 +1,6 @@
 # Animations
 
-Any component can have an `animations` block to make it move or pulse over time.
+Any component with a Display entity (TEXT, BUTTON, INPUT, ITEM, BLOCK) can have an `animations` block to make it move or pulse over time.
 
 The variable `t` increases by `0.05` every tick (reaches `~3.0` per second).
 
@@ -12,6 +12,7 @@ The variable `t` increases by `0.05` every tick (reaches `~3.0` per second).
 | `rotation-formula` | Sets the Z-rotation in degrees each tick |
 | `x-formula` | Adds an offset to the component's base `x` position |
 | `y-formula` | Adds an offset to the component's base `y` position |
+| `z-formula` | Adds an offset to the component's base `z` position |
 
 ## Examples
 
@@ -65,6 +66,21 @@ my_item:
     y-formula: "1.5 * sin(t)"
 ```
 
+### Moving forward/backward
+```yaml
+my_block:
+  type: BLOCK
+  material: DIAMOND_BLOCK
+  x: 0.0
+  y: 0.0
+  z: 1.0
+  size: 0.5
+  animations:
+    z-formula: "0.3 * sin(t * 2)"
+```
+
 ---
+
+> **Note:** Animations only work on display components (TEXT, BUTTON, INPUT, ITEM, BLOCK). ENTITY and PLAYER types do not support animations.
 
 > **Tip:** Formula evaluation uses [exp4j](https://www.objecthunter.net/exp4j/). Supported functions: `sin`, `cos`, `tan`, `abs`, `sqrt`, `log`, `pow`, etc.

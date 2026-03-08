@@ -3,7 +3,6 @@ package com.fendrixx.aurus.processors;
 import com.fendrixx.aurus.Aurus;
 import net.kyori.adventure.text.minimessage.MiniMessage;
 import org.bukkit.Bukkit;
-import org.bukkit.Sound;
 import org.bukkit.entity.Player;
 
 import java.util.List;
@@ -44,10 +43,11 @@ public class ActionProcessor {
         } else if (cmd.startsWith("[sound] ")) {
             String[] parts = cmd.substring(8).split(", ");
             try {
-                Sound sound = Sound.valueOf(parts[0].toUpperCase());
-                float vol = parts.length > 1 ? Float.parseFloat(parts[1]) : 1.0f;
-                float pitch = parts.length > 2 ? Float.parseFloat(parts[2]) : 1.0f;
-                player.playSound(player.getLocation(), sound, vol, pitch);
+                String key = parts[0].trim();
+                if (!key.contains(":")) key = "minecraft:" + key;
+                float vol = parts.length > 1 ? Float.parseFloat(parts[1].trim()) : 1.0f;
+                float pitch = parts.length > 2 ? Float.parseFloat(parts[2].trim()) : 1.0f;
+                player.playSound(player.getLocation(), key, vol, pitch);
             } catch (Exception ignored) {
             }
         }

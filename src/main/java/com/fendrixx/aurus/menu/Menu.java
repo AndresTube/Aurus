@@ -2,13 +2,11 @@ package com.fendrixx.aurus.menu;
 
 import com.fendrixx.aurus.Aurus;
 import com.fendrixx.aurus.processors.ActionProcessor;
-import com.fendrixx.aurus.util.ColorUtils;
-import com.fendrixx.aurus.util.MathUtil;
+import com.fendrixx.aurus.util.CameraBasis;
 import org.bukkit.Bukkit;
-import org.bukkit.Color;
 import org.bukkit.Location;
 import org.bukkit.configuration.ConfigurationSection;
-import org.bukkit.entity.*;
+import org.bukkit.entity.Player;
 import org.bukkit.potion.PotionEffect;
 import org.bukkit.potion.PotionEffectType;
 
@@ -22,7 +20,7 @@ public class Menu {
     private final MenuRenderer renderer;
     private final List<MenuButton> buttons = new ArrayList<>();
 
-    private Display cursorEntity;
+    private MenuCursor cursor;
     private MenuAnimator animator;
     private Location oldLocation;
     private double menuDistance;
@@ -30,12 +28,14 @@ public class Menu {
     private float spawnYaw;
     private float spawnPitch;
     private boolean closed = false;
+    private boolean couldFlyBefore;
+    private CameraBasis basis;
 
     public Menu(Aurus plugin, Player player) {
         this.plugin = plugin;
         this.player = player;
         this.camera = new MenuCamera(player);
-        this.renderer = new MenuRenderer(new ActionProcessor(plugin));
+        this.renderer = new MenuRenderer(new ActionProcessor(plugin), plugin);
     }
 
     public void open(String menuId) {
@@ -44,15 +44,62 @@ public class Menu {
             return;
 
         this.oldLocation = player.getLocation().clone();
+        this.couldFlyBefore = player.getAllowFlight();
         this.menuDistance = section.getDouble("distance", 2.5);
 
-        Location savedLocation = player.getLocation().clone();
-        camera.spawn();
-        player.teleport(savedLocation);
+        String locationStr = section.getString("location");
+        Location fixedLoc = locationStr != null ? parseLocation(locationStr) : null;
 
-        this.spawnYaw = player.getLocation().getYaw();
-        this.spawnPitch = player.getLocation().getPitch();
-        this.menuOrigin = MathUtil.getMenuOrigin(camera.getEyeLocation(), spawnYaw, spawnPitch, menuDistance);
+        Runnable setupMenu = (fixedLoc != null) ? () -> setupAtLocation(section, fixedLoc) : () -> setupAtPlayer(section);
+
+        if (fixedLoc != null) {
+            fixedLoc.getWorld().getChunkAtAsync(fixedLoc).thenAccept(chunk -> {
+                if (!player.isOnline()) return;
+                Bukkit.getScheduler().runTask(plugin, setupMenu);
+            });
+        } else {
+            setupMenu.run();
+        }
+    }
+
+    private void setupAtPlayer(ConfigurationSection section) {
+        Location savedLocation = player.getLocation().clone();
+        this.spawnYaw = savedLocation.getYaw();
+        this.spawnPitch = savedLocation.getPitch();
+
+        player.setAllowFlight(true);
+
+        camera.spawn(plugin, () -> {
+            player.teleport(savedLocation);
+            finishSetup(section);
+        });
+    }
+
+    private void setupAtLocation(ConfigurationSection section, Location fixedLoc) {
+        this.spawnYaw = fixedLoc.getYaw();
+        this.spawnPitch = fixedLoc.getPitch();
+
+        player.setAllowFlight(true);
+
+        fixedLoc.getChunk().addPluginChunkTicket(plugin);
+
+        player.teleportAsync(fixedLoc).thenAccept(success -> {
+            if (!success || !player.isOnline() || closed) return;
+
+            Bukkit.getScheduler().runTaskLater(plugin, () -> {
+                if (closed || !player.isOnline()) return;
+
+                camera.spawnAt(plugin, fixedLoc, () -> {
+                    player.teleport(fixedLoc);
+                    finishSetup(section);
+                });
+            }, 5L);
+        });
+    }
+
+    private void finishSetup(ConfigurationSection section) {
+        this.basis = new CameraBasis(spawnYaw, spawnPitch);
+        this.menuOrigin = basis.getMenuOrigin(camera.getEyeLocation(), menuDistance);
 
         spawnCursor();
 
@@ -62,18 +109,20 @@ public class Menu {
                 ConfigurationSection c = comps.getConfigurationSection(key);
                 double bx = c.getDouble("x");
                 double by = c.getDouble("y");
-                Location loc = calculateComponentLocation(bx, by);
-                MenuButton btn = renderer.createComponent(player, c.getString("type", "BUTTON").toUpperCase(), c, loc,
-                        bx, by, this::close);
+                double bz = c.getDouble("z", 1.0);
+                Location loc = calculateComponentLocation(bx, by, bz);
+                MenuButton btn = renderer.createComponent(player, c.getString("type", "BUTTON").toUpperCase(), c,
+                        loc, bx, by, this::close);
                 if (btn != null) {
+                    btn.setBaseZ(bz);
                     buttons.add(btn);
-                    for (Player otherPlayer : Bukkit.getOnlinePlayers()) {
-                        if (!otherPlayer.equals(player)) {
-                            otherPlayer.hideEntity(plugin, btn.getDisplay());
-                            otherPlayer.hideEntity(plugin, player);
-                        }
-                    }
                 }
+            }
+        }
+
+        for (Player otherPlayer : Bukkit.getOnlinePlayers()) {
+            if (!otherPlayer.equals(player)) {
+                otherPlayer.hideEntity(plugin, player);
             }
         }
 
@@ -87,30 +136,24 @@ public class Menu {
     }
 
     private void spawnCursor() {
-        ConfigurationSection c = plugin.getConfigHandler().getCursorSection();
+        this.cursor = new MenuCursor();
+
+        ConfigurationSection cursorConf = plugin.getConfigHandler().getCursorSection();
+
         Location loc = menuOrigin.clone();
         loc.setYaw(spawnYaw + 180f);
         loc.setPitch(-spawnPitch);
 
-        TextDisplay td = (TextDisplay) player.getWorld().spawnEntity(loc, EntityType.TEXT_DISPLAY);
-        td.setBillboard(Display.Billboard.FIXED);
-
-        String val = c != null ? c.getString("value", "●") : "●";
-        val = renderer.getActionProcessor().parse(player, val);
-        td.setText(ColorUtils.format(val));
-        td.setBackgroundColor(Color.fromARGB(0, 0, 0, 0));
-        renderer.setupDisplay(td, (float) (c != null ? c.getDouble("size", 1.0) : 1.0), c);
-        this.cursorEntity = td;
-
-        for (Player otherPlayer : Bukkit.getOnlinePlayers()) {
-            if (!otherPlayer.equals(player)) {
-                otherPlayer.hideEntity(plugin, td);
-            }
-        }
+        cursor.spawn(
+                player,
+                loc,
+                cursorConf,
+                renderer.getActionProcessor()
+        );
     }
 
-    public Location calculateComponentLocation(double x, double y) {
-        return MathUtil.calculateComponentLocation(menuOrigin, spawnYaw, spawnPitch, x, y);
+    public Location calculateComponentLocation(double x, double y, double z) {
+        return basis.calculateComponentLocation(menuOrigin, x, y, z);
     }
 
     public void close() {
@@ -123,12 +166,16 @@ public class Menu {
         if (animator != null)
             animator.cancel();
         camera.remove();
-        if (cursorEntity != null)
-            cursorEntity.remove();
-        buttons.forEach(b -> b.getDisplay().remove());
+        if (cursor != null)
+            cursor.remove();
+        for (MenuButton btn : buttons) {
+            btn.remove();
+        }
         buttons.clear();
         plugin.getMenuManager().removeMenu(player.getUniqueId());
 
+        player.setAllowFlight(couldFlyBefore);
+        player.setFlying(false);
         player.showEntity(plugin, player);
         player.removePotionEffect(PotionEffectType.INVISIBILITY);
         for (Player otherPlayer : Bukkit.getOnlinePlayers()) {
@@ -138,18 +185,16 @@ public class Menu {
         }
     }
 
-    public void updateVisuals() {
-        for (MenuButton btn : buttons) {
-            btn.updateText(player);
-        }
+    public CameraBasis getBasis() {
+        return basis;
     }
 
     public MenuCamera getCamera() {
         return camera;
     }
 
-    public Display getCursor() {
-        return cursorEntity;
+    public MenuCursor getCursor() {
+        return cursor;
     }
 
     public List<MenuButton> getButtons() {
@@ -170,5 +215,21 @@ public class Menu {
 
     public double getMenuDistance() {
         return menuDistance;
+    }
+
+    private Location parseLocation(String str) {
+        try {
+            String[] parts = str.split(",");
+            org.bukkit.World world = Bukkit.getWorld(parts[0].trim());
+            if (world == null) return null;
+            double x = Double.parseDouble(parts[1].trim());
+            double y = Double.parseDouble(parts[2].trim());
+            double z = Double.parseDouble(parts[3].trim());
+            float yaw = parts.length > 4 ? Float.parseFloat(parts[4].trim()) : 0f;
+            float pitch = parts.length > 5 ? Float.parseFloat(parts[5].trim()) : 0f;
+            return new Location(world, x, y, z, yaw, pitch);
+        } catch (Exception e) {
+            return null;
+        }
     }
 }

@@ -7,18 +7,35 @@ import org.bukkit.Location;
 import org.bukkit.entity.EntityType;
 import org.bukkit.entity.Pig;
 import org.bukkit.entity.Player;
+import org.bukkit.plugin.java.JavaPlugin;
 
 public class MenuCamera {
     private final Player player;
     private Pig tripod;
+    private JavaPlugin ownerPlugin;
 
     public MenuCamera(Player player) {
         this.player = player;
     }
 
-    public void spawn() {
+    public void spawn(JavaPlugin plugin, Runnable onReady) {
         Location location = player.getLocation();
+        spawnAt(plugin, location, onReady);
+    }
 
+    public void spawnAt(JavaPlugin plugin, Location location, Runnable onReady) {
+        this.ownerPlugin = plugin;
+        location.getWorld().getChunkAtAsync(location, true).thenAccept(chunk -> {
+            chunk.addPluginChunkTicket(plugin);
+
+            plugin.getServer().getScheduler().runTask(plugin, () -> {
+                doSpawn(location);
+                onReady.run();
+            });
+        });
+    }
+
+    private void doSpawn(Location location) {
         tripod = (Pig) location.getWorld().spawnEntity(location, EntityType.PIG);
         tripod.setInvisible(true);
         tripod.setAI(false);
@@ -28,7 +45,6 @@ public class MenuCamera {
         tripod.setCollidable(false);
 
         PacketEvents.getAPI().getPlayerManager().sendPacket(player, new WrapperPlayServerCamera(tripod.getEntityId()));
-
         PacketEvents.getAPI().getPlayerManager().sendPacket(player,
                 new WrapperPlayServerSetPassengers(tripod.getEntityId(), new int[] { player.getEntityId() }));
     }
@@ -37,7 +53,10 @@ public class MenuCamera {
         PacketEvents.getAPI().getPlayerManager().sendPacket(player, new WrapperPlayServerCamera(player.getEntityId()));
 
         if (tripod != null) {
+            if (ownerPlugin != null)
+                tripod.getLocation().getChunk().removePluginChunkTicket(ownerPlugin);
             tripod.remove();
+            tripod = null;
         }
     }
 
