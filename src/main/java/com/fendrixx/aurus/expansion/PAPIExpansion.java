@@ -25,7 +25,7 @@ public class PAPIExpansion extends PlaceholderExpansion {
 
     @Override
     public String getVersion() {
-        return "1.1.0-BETA";
+        return "1.1.1-BETA";
     }
 
     @Override
