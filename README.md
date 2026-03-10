@@ -1,6 +1,6 @@
 # Aurus
 
-![Version](https://img.shields.io/badge/Version-1.1.1_BETA-yellow?style=flat-square)
+![Version](https://img.shields.io/badge/Version-1.1.2_BETA-yellow?style=flat-square)
 ![Software](https://img.shields.io/badge/Software-Paper-blue?style=flat-square)
 ![Author](https://img.shields.io/badge/Author-Fendrixx-red?style=flat-square)
 
@@ -34,7 +34,7 @@ No inventory windows. No chest GUI. Just world-space menus.
 ## Installation
 
 1. Install **PacketEvents 2.x** on your Paper server.
-2. Drop `Aurus-1.1.1-BETA.jar` into your `plugins/` folder.
+2. Drop `Aurus-1.1.2-BETA.jar` into your `plugins/` folder.
 3. Start the server — default menus are created in `plugins/Aurus/menus/`.
 4. Open a menu in-game: `/au open welcome_server`
 

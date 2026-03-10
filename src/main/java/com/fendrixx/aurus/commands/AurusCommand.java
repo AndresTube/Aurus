@@ -1,12 +1,14 @@
 package com.fendrixx.aurus.commands;
 
 import com.fendrixx.aurus.Aurus;
-import com.fendrixx.aurus.util.ColorUtils;
 import revxrsal.commands.annotation.Command;
 import revxrsal.commands.annotation.Optional;
+import revxrsal.commands.annotation.Suggest;
+import revxrsal.commands.autocomplete.SuggestionProvider;
 import revxrsal.commands.bukkit.actor.BukkitCommandActor;
 import revxrsal.commands.annotation.Subcommand;
 import revxrsal.commands.bukkit.annotation.CommandPermission;
+import revxrsal.commands.annotation.SuggestWith;
 import net.kyori.adventure.text.minimessage.MiniMessage;
 import org.bukkit.entity.Player;
 
@@ -29,19 +31,21 @@ public class AurusCommand {
 
     @Subcommand("open")
     @CommandPermission("aurus.admin")
-    public void openMenu(BukkitCommandActor actor, String menuId, @Optional Player target) {
-        if (!actor.isPlayer()) return;
-        Player sender = actor.asPlayer();
-
+    public void openMenu(BukkitCommandActor actor, @SuggestWith(MenuSuggestionProvider.class) String menuId, @Optional Player target) {
         if (plugin.getConfigHandler().getMenuSection(menuId) == null) {
             actor.reply(MM.deserialize(PREFIX + "<dark_gray>[<red>✘<dark_gray>] <red>Menu <yellow>" + menuId + "</yellow> not found."));
             return;
         }
 
-        Player targetPlayer = (target != null) ? target : sender;
+        Player targetPlayer = (target != null) ? target : (actor.isPlayer() ? actor.asPlayer() : null);
+        if (targetPlayer == null) {
+            actor.reply(MM.deserialize(PREFIX + "<dark_gray>[<red>✘<dark_gray>] <red>Specify a target player."));
+            return;
+        }
+
         plugin.getMenuManager().openMenu(targetPlayer, menuId);
 
-        if (!targetPlayer.equals(sender)) {
+        if (actor.isPlayer() && !targetPlayer.equals(actor.asPlayer())) {
             actor.reply(MM.deserialize(PREFIX + "<dark_gray>[<green>✔<dark_gray>] <green>Opened <yellow>" + menuId + "</yellow> for <yellow>" + targetPlayer.getName() + "</yellow>."));
         }
     }
@@ -57,9 +61,11 @@ public class AurusCommand {
     @Subcommand("close")
     @CommandPermission("aurus.admin")
     public void closeMenu(BukkitCommandActor actor, @Optional Player target) {
-        if (!actor.isPlayer()) return;
-        Player sender = actor.asPlayer();
-        Player targetPlayer = (target != null) ? target : sender;
+        Player targetPlayer = (target != null) ? target : (actor.isPlayer() ? actor.asPlayer() : null);
+        if (targetPlayer == null) {
+            actor.reply(MM.deserialize(PREFIX + "<dark_gray>[<red>✘<dark_gray>] <red>Specify a target player."));
+            return;
+        }
 
         if (plugin.getMenuManager().getActiveMenu(targetPlayer.getUniqueId()) != null) {
             plugin.getMenuManager().closeMenu(targetPlayer);
@@ -71,19 +77,27 @@ public class AurusCommand {
 
     @Subcommand("debug")
     @CommandPermission("aurus.admin")
-    public void toggleDebug(BukkitCommandActor actor) {
-        if (!actor.isPlayer()) {
-            actor.reply(ColorUtils.format(PREFIX + "This command only can be used by players"));
+    public void toggleDebug(BukkitCommandActor actor, @Optional Player target) {
+        Player player = (target != null) ? target : (actor.isPlayer() ? actor.asPlayer() : null);
+        if (player == null) {
+            actor.reply(MM.deserialize(PREFIX + "<dark_gray>[<red>✘<dark_gray>] <red>Specify a target player."));
             return;
         }
 
-        Player player = actor.asPlayer();
         boolean nowEnabled = plugin.getDebugManager().toggle(player.getUniqueId());
 
         if (nowEnabled) {
-            actor.reply(MM.deserialize(PREFIX + "<dark_gray>[<aqua>⚙<dark_gray>] <green>Debug enabled"));
+            actor.reply(MM.deserialize(PREFIX + "<dark_gray>[<aqua>⚙<dark_gray>] <green>Debug enabled for <yellow>" + player.getName()));
         } else {
-            actor.reply(MM.deserialize(PREFIX + "<dark_gray>[<aqua>⚙<dark_gray>] <red>Debug disabled"));
+            actor.reply(MM.deserialize(PREFIX + "<dark_gray>[<aqua>⚙<dark_gray>] <red>Debug disabled for <yellow>" + player.getName()));
+        }
+    }
+
+    public static class MenuSuggestionProvider implements SuggestionProvider<BukkitCommandActor> {
+        @Override
+        public java.util.Collection<String> getSuggestions(revxrsal.commands.node.ExecutionContext<BukkitCommandActor> context) {
+            Aurus plugin = Aurus.getPlugin(Aurus.class);
+            return plugin.getConfigHandler().getMenuKeys();
         }
     }
 }

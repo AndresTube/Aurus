@@ -127,7 +127,7 @@ public class Aurus extends JavaPlugin {
                 <gradient:dark_purple:yellow>| ░█▀▀█⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀</gradient>
                 <gradient:dark_purple:yellow>| ░█▄▄█░█ ░█ █▀▀█░█ ░█░██▀▀</gradient>
                 <gradient:dark_purple:yellow>| ░█ ░█░█▄▄█ █▀█▄░█▄▄█ ▄▄█▀</gradient>
-                <dark_purple>|<gradient:dark_gray:white> - Aurus 1.1.1-BETA by Fendrixx
+                <dark_purple>|<gradient:dark_gray:white> - Aurus 1.1.2-BETA by Fendrixx
                 \s
                 """));
     }
