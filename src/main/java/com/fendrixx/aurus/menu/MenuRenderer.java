@@ -43,7 +43,7 @@ public class MenuRenderer {
                 boolean shadow = conf.getBoolean("shadow", false);
                 int entityId = FakeEntityFactory.spawnFakeTextDisplay(player, loc, text,
                         bgColor, shadow, (byte) 0, size, rotX, rotY, rotZ);
-                yield new MenuButton(entityId, null, player, rawText, null, "TEXT", null, conf, actionProcessor, baseX, baseY);
+                yield new MenuButton(entityId, null, player, rawText, null, "TEXT", null, conf, actionProcessor, baseX, baseY, this, loc, closeAction);
             }
             case "BUTTON" -> {
                 String text = ColorUtils.format(actionProcessor.parse(player, rawText));
@@ -53,7 +53,7 @@ public class MenuRenderer {
                         bgColor, shadow, (byte) 0, size, rotX, rotY, rotZ);
                 yield new MenuButton(entityId, null, player, rawText,
                         () -> actionProcessor.processList(player, conf.getStringList("actions"), closeAction),
-                        "BUTTON", null, conf, actionProcessor, baseX, baseY);
+                        "BUTTON", null, conf, actionProcessor, baseX, baseY, this, loc, closeAction);
             }
             case "INPUT" -> {
                 String text = ColorUtils.format(actionProcessor.parse(player, rawText));
@@ -63,7 +63,7 @@ public class MenuRenderer {
                         bgColor, shadow, (byte) 0, size, rotX, rotY, rotZ);
                 yield new MenuButton(entityId, null, player, rawText,
                         () -> actionProcessor.processList(player, conf.getStringList("actions"), closeAction),
-                        "INPUT", conf.getString("variable_name"), conf, actionProcessor, baseX, baseY);
+                        "INPUT", conf.getString("variable_name"), conf, actionProcessor, baseX, baseY, this, loc, closeAction);
             }
             case "ITEM" -> {
                 String mat = actionProcessor.parse(player, conf.getString("material", "STONE"));
@@ -74,14 +74,14 @@ public class MenuRenderer {
                     item.setItemMeta(meta);
                 }
                 int entityId = FakeEntityFactory.spawnFakeItemDisplay(player, loc, item, size, rotX, rotY, rotZ);
-                yield new MenuButton(entityId, null, player, null, null, "ITEM", null, conf, actionProcessor, baseX, baseY);
+                yield new MenuButton(entityId, null, player, null, null, "ITEM", null, conf, actionProcessor, baseX, baseY, this, loc, closeAction);
             }
             case "BLOCK" -> {
                 String mat = actionProcessor.parse(player, conf.getString("material", "STONE"));
                 int blockStateId = com.github.retrooper.packetevents.protocol.world.states.WrappedBlockState
                         .getByString("minecraft:" + mat.toLowerCase()).getGlobalId();
                 int entityId = FakeEntityFactory.spawnFakeBlockDisplay(player, loc, blockStateId, size, rotX, rotY, rotZ);
-                yield new MenuButton(entityId, null, player, null, null, "BLOCK", null, conf, actionProcessor, baseX, baseY);
+                yield new MenuButton(entityId, null, player, null, null, "BLOCK", null, conf, actionProcessor, baseX, baseY, this, loc, closeAction);
             }
             case "ENTITY" -> {
                 String entityName = conf.getString("entity", "ZOMBIE");
@@ -92,7 +92,7 @@ public class MenuRenderer {
                 FakeEntityFactory.setScale(player, entityId, size);
                 if (rotX != 0 || headPitchRot != 0 || headYawRot != 0)
                     FakeEntityFactory.rotateEntityFull(player, entityId, rotX, headPitchRot, headYawRot != 0 ? headYawRot : rotX);
-                yield new MenuButton(entityId, null, player, null, null, "ENTITY", null, conf, actionProcessor, baseX, baseY);
+                yield new MenuButton(entityId, null, player, null, null, "ENTITY", null, conf, actionProcessor, baseX, baseY, this, loc, closeAction);
             }
             case "PLAYER" -> {
                 String skinTarget = actionProcessor.parse(player, conf.getString("skin", player.getName()));
@@ -113,7 +113,7 @@ public class MenuRenderer {
                             FakeEntityFactory.rotateEntityFull(player, entityId, capturedRotX, capturedHeadPitch, capturedHeadYaw != 0 ? capturedHeadYaw : capturedRotX);
                     })
                 );
-                yield new MenuButton(entityId, fakeUUID, player, null, null, "PLAYER", null, conf, actionProcessor, baseX, baseY);
+                yield new MenuButton(entityId, fakeUUID, player, null, null, "PLAYER", null, conf, actionProcessor, baseX, baseY, this, loc, closeAction);
             }
             default -> null;
         };

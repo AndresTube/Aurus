@@ -17,6 +17,7 @@ public class MenuAnimator extends BukkitRunnable {
     private final double distance;
     private final int updateDelay;
     private final List<MenuButton> allButtons;
+    private final List<MenuButton> hoverableButtons;
     private final List<AnimatedEntry> animatedEntries;
     private final boolean hasAnimations;
     private double ticks = 0;
@@ -38,6 +39,15 @@ public class MenuAnimator extends BukkitRunnable {
         this.allButtons = buttons;
         this.distance = distance;
         this.updateDelay = updateDelay;
+
+        List<MenuButton> hoverable = new ArrayList<>();
+        for (MenuButton btn : buttons) {
+            String type = btn.getType();
+            if (("BUTTON".equals(type) || "INPUT".equals(type)) && btn.getConfig().getConfigurationSection("hover") != null) {
+                hoverable.add(btn);
+            }
+        }
+        this.hoverableButtons = hoverable;
 
         List<AnimatedEntry> entries = new ArrayList<>();
         for (MenuButton btn : buttons) {
@@ -99,9 +109,24 @@ public class MenuAnimator extends BukkitRunnable {
                 distance);
         menu.getCursor().teleport(newCursorPos);
 
+        if (!hoverableButtons.isEmpty()) {
+            float dYaw = MathUtil.normalizeAngle(playerLoc.getYaw() - menu.getSpawnYaw());
+            float dPitch = MathUtil.normalizeAngle(playerLoc.getPitch() - menu.getSpawnPitch());
+            double cursorX = Math.tan(Math.toRadians(dYaw)) * distance;
+            double cursorY = -Math.tan(Math.toRadians(dPitch)) * distance;
+
+            for (MenuButton btn : hoverableButtons) {
+                double dx = cursorX - btn.getBaseX();
+                double dy = cursorY - btn.getBaseY();
+                btn.setHovered(Math.abs(dx) < btn.getHitboxHalfW() && Math.abs(dy) < btn.getHitboxHalfH());
+            }
+        }
+
         updateCounter++;
         if (updateCounter >= updateDelay) {
-            allButtons.forEach(b -> b.updateText(player));
+            if (menu.shouldUpdatePlaceholders()) {
+                allButtons.forEach(b -> b.updateText(player));
+            }
             updateCounter = 0;
         }
     }

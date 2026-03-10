@@ -11,7 +11,9 @@ import org.bukkit.event.block.Action;
 import org.bukkit.event.player.PlayerInteractEvent;
 import org.bukkit.event.player.PlayerQuitEvent;
 
+import java.util.Comparator;
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 
@@ -69,15 +71,15 @@ public class InteractionListener implements Listener {
         double cursorX = Math.tan(Math.toRadians(dYaw)) * dist;
         double cursorY = -Math.tan(Math.toRadians(dPitch)) * dist;
 
-        for (MenuButton btn : menu.getButtons()) {
-            double size = btn.getConfig().getDouble("size", 1.0);
-            double hitRadius = 0.5 * size;
+        List<MenuButton> sorted = menu.getButtons().stream()
+                .sorted(Comparator.comparingDouble(MenuButton::getBaseZ))
+                .toList();
 
+        for (MenuButton btn : sorted) {
             double dx = cursorX - btn.getBaseX();
             double dy = cursorY - btn.getBaseY();
-            double d2 = Math.sqrt(dx * dx + dy * dy);
 
-            if (d2 < hitRadius) {
+            if (Math.abs(dx) < btn.getHitboxHalfW() && Math.abs(dy) < btn.getHitboxHalfH()) {
                 if (plugin.getDebugManager().isEnabled(player.getUniqueId())) {
                     plugin.getDebugManager().log(player.getName() + " clicked [" + btn.getType() + "] at (" +
                             btn.getBaseX() + ", " + btn.getBaseY() + ") actions=" +

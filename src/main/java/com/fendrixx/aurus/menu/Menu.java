@@ -29,6 +29,7 @@ public class Menu {
     private float spawnPitch;
     private boolean closed = false;
     private boolean couldFlyBefore;
+    private boolean updatePlaceholders = true;
     private CameraBasis basis;
 
     public Menu(Aurus plugin, Player player) {
@@ -46,6 +47,7 @@ public class Menu {
         this.oldLocation = player.getLocation().clone();
         this.couldFlyBefore = player.getAllowFlight();
         this.menuDistance = section.getDouble("distance", 2.5);
+        this.updatePlaceholders = section.getBoolean("update-placeholders", true);
 
         String locationStr = section.getString("location");
         Location fixedLoc = locationStr != null ? parseLocation(locationStr) : null;
@@ -215,6 +217,10 @@ public class Menu {
 
     public double getMenuDistance() {
         return menuDistance;
+    }
+
+    public boolean shouldUpdatePlaceholders() {
+        return updatePlaceholders;
     }
 
     private Location parseLocation(String str) {
