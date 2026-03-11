@@ -67,15 +67,15 @@ public class CameraBasis {
         float dYaw = MathUtil.normalizeAngle(playerYaw - yaw);
         float dPitch = MathUtil.normalizeAngle(playerPitch - pitch);
 
-        double cx = Math.toRadians(dYaw) * distance;
-        double cy = -Math.toRadians(dPitch) * distance;
+        double cx = Math.tan(Math.toRadians(dYaw)) * distance;
+        double cy = -Math.tan(Math.toRadians(dPitch)) * distance;
 
         return new Location(
                 origin.getWorld(),
                 origin.getX() + rx * cx + ux * cy,
                 origin.getY() + ry * cx + uy * cy,
                 origin.getZ() + rz * cx + uz * cy,
-                playerYaw + 180f,
-                -playerPitch);
+                yaw + 180f,
+                -pitch);
     }
 }

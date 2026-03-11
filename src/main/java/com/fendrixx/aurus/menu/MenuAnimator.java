@@ -112,8 +112,8 @@ public class MenuAnimator extends BukkitRunnable {
         if (!hoverableButtons.isEmpty()) {
             float dYaw = MathUtil.normalizeAngle(playerLoc.getYaw() - menu.getSpawnYaw());
             float dPitch = MathUtil.normalizeAngle(playerLoc.getPitch() - menu.getSpawnPitch());
-            double cursorX = Math.toRadians(dYaw) * distance;
-            double cursorY = -Math.toRadians(dPitch) * distance;
+            double cursorX = Math.tan(Math.toRadians(dYaw)) * distance;
+            double cursorY = -Math.tan(Math.toRadians(dPitch)) * distance;
 
             for (MenuButton btn : hoverableButtons) {
                 double dx = cursorX - btn.getBaseX();
