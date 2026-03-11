@@ -4,6 +4,7 @@ import com.fendrixx.aurus.packets.FakeEntityFactory;
 import com.fendrixx.aurus.processors.ActionProcessor;
 import com.fendrixx.aurus.util.ColorUtils;
 import net.kyori.adventure.text.minimessage.MiniMessage;
+
 import org.bukkit.Location;
 import org.bukkit.configuration.ConfigurationSection;
 import org.bukkit.entity.Player;
@@ -58,18 +59,17 @@ public class MenuButton {
         ConfigurationSection hitbox = config.getConfigurationSection("hitbox");
         if (hitbox != null && hitbox.contains("width")) {
             this.hitboxHalfW = hitbox.getDouble("width") / 2.0;
-        } else if ("TEXT".equals(type) || "BUTTON".equals(type) || "INPUT".equals(type)) {
-            int charCount = rawText != null ? MiniMessage.miniMessage().stripTags(rawText).length() : 1;
-            this.hitboxHalfW = size * 0.15 * Math.max(charCount, 1);
+        } else if (rawText != null && ("TEXT".equals(type) || "BUTTON".equals(type) || "INPUT".equals(type))) {
+            String visible = MiniMessage.miniMessage().stripTags(actionProcessor.parse(viewer, rawText));
+            int charCount = Math.max(visible.length(), 1);
+            this.hitboxHalfW = size * 0.025 * charCount;
         } else {
-            this.hitboxHalfW = size;
+            this.hitboxHalfW = size * 0.5;
         }
         if (hitbox != null && hitbox.contains("height")) {
             this.hitboxHalfH = hitbox.getDouble("height") / 2.0;
-        } else if ("TEXT".equals(type) || "BUTTON".equals(type) || "INPUT".equals(type)) {
-            this.hitboxHalfH = size * 0.35;
         } else {
-            this.hitboxHalfH = size;
+            this.hitboxHalfH = size * 0.35;
         }
     }
 
