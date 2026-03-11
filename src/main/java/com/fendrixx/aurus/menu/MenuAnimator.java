@@ -2,6 +2,7 @@ package com.fendrixx.aurus.menu;
 
 import com.fendrixx.aurus.packets.FakeEntityFactory;
 import com.fendrixx.aurus.util.MathUtil;
+
 import net.objecthunter.exp4j.Expression;
 import org.bukkit.Location;
 import org.bukkit.configuration.ConfigurationSection;
@@ -110,10 +111,9 @@ public class MenuAnimator extends BukkitRunnable {
         menu.getCursor().teleport(newCursorPos);
 
         if (!hoverableButtons.isEmpty()) {
-            float dYaw = MathUtil.normalizeAngle(playerLoc.getYaw() - menu.getSpawnYaw());
-            float dPitch = MathUtil.normalizeAngle(playerLoc.getPitch() - menu.getSpawnPitch());
-            double cursorX = Math.tan(Math.toRadians(dYaw)) * distance;
-            double cursorY = -Math.tan(Math.toRadians(dPitch)) * distance;
+            double[] local = menu.getBasis().projectToPlane(playerLoc.getYaw(), playerLoc.getPitch());
+            double cursorX = local[0] * distance;
+            double cursorY = local[1] * distance;
 
             for (MenuButton btn : hoverableButtons) {
                 double dx = cursorX - btn.getBaseX();

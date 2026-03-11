@@ -3,7 +3,7 @@ package com.fendrixx.aurus.listeners;
 import com.fendrixx.aurus.Aurus;
 import com.fendrixx.aurus.menu.Menu;
 import com.fendrixx.aurus.menu.MenuButton;
-import com.fendrixx.aurus.util.MathUtil;
+
 import org.bukkit.entity.Player;
 import org.bukkit.event.EventHandler;
 import org.bukkit.event.Listener;
@@ -61,15 +61,11 @@ public class InteractionListener implements Listener {
     private void processMenuClick(Player player, Menu menu) {
         float pYaw = player.getLocation().getYaw();
         float pPitch = player.getLocation().getPitch();
-        float cYaw = menu.getSpawnYaw();
-        float cPitch = menu.getSpawnPitch();
         double dist = menu.getMenuDistance();
 
-        float dYaw = MathUtil.normalizeAngle(pYaw - cYaw);
-        float dPitch = MathUtil.normalizeAngle(pPitch - cPitch);
-
-        double cursorX = Math.tan(Math.toRadians(dYaw)) * dist;
-        double cursorY = -Math.tan(Math.toRadians(dPitch)) * dist;
+        double[] local = menu.getBasis().projectToPlane(pYaw, pPitch);
+        double cursorX = local[0] * dist;
+        double cursorY = local[1] * dist;
 
         List<MenuButton> sorted = menu.getButtons().stream()
                 .sorted(Comparator.comparingDouble(MenuButton::getBaseZ))

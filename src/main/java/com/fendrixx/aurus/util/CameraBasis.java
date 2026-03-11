@@ -63,12 +63,30 @@ public class CameraBasis {
                 -pitch);
     }
 
-    public Location getCursorLocation(Location origin, float playerYaw, float playerPitch, double distance) {
-        float dYaw = MathUtil.normalizeAngle(playerYaw - yaw);
-        float dPitch = MathUtil.normalizeAngle(playerPitch - pitch);
+    public double[] projectToPlane(float playerYaw, float playerPitch) {
+        double py = Math.toRadians(playerYaw);
+        double pp = Math.toRadians(playerPitch);
+        double lookX = -Math.sin(py) * Math.cos(pp);
+        double lookY = -Math.sin(pp);
+        double lookZ = Math.cos(py) * Math.cos(pp);
 
-        double cx = Math.tan(Math.toRadians(dYaw)) * distance;
-        double cy = -Math.tan(Math.toRadians(dPitch)) * distance;
+        double dot = lookX * fx + lookY * fy + lookZ * fz;
+        if (Math.abs(dot) < 1e-9) return new double[]{0, 0};
+
+        double t = 1.0 / dot;
+        double hitX = lookX * t;
+        double hitY = lookY * t;
+        double hitZ = lookZ * t;
+
+        double localX = hitX * rx + hitY * ry + hitZ * rz;
+        double localY = hitX * ux + hitY * uy + hitZ * uz;
+        return new double[]{localX, localY};
+    }
+
+    public Location getCursorLocation(Location origin, float playerYaw, float playerPitch, double distance) {
+        double[] local = projectToPlane(playerYaw, playerPitch);
+        double cx = local[0] * distance;
+        double cy = local[1] * distance;
 
         return new Location(
                 origin.getWorld(),
