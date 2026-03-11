@@ -68,8 +68,8 @@ public class InteractionListener implements Listener {
         float dYaw = MathUtil.normalizeAngle(pYaw - cYaw);
         float dPitch = MathUtil.normalizeAngle(pPitch - cPitch);
 
-        double cursorX = Math.tan(Math.toRadians(dYaw)) * dist;
-        double cursorY = -Math.tan(Math.toRadians(dPitch)) * dist;
+        double cursorX = Math.toRadians(dYaw) * dist;
+        double cursorY = -Math.toRadians(dPitch) * dist;
 
         List<MenuButton> sorted = menu.getButtons().stream()
                 .sorted(Comparator.comparingDouble(MenuButton::getBaseZ))

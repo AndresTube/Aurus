@@ -16,6 +16,8 @@ public class MenuManager {
     }
 
     public void openMenu(Player player, String menuId) {
+        if (plugin.getConfigHandler().getMenuSection(menuId) == null) return;
+
         closeMenu(player);
 
         Menu menu = new Menu(plugin, player);
