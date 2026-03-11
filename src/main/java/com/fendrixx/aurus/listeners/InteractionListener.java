@@ -63,9 +63,9 @@ public class InteractionListener implements Listener {
         float pPitch = player.getLocation().getPitch();
         double dist = menu.getMenuDistance();
 
-        double[] local = menu.getBasis().projectToPlane(pYaw, pPitch);
-        double cursorX = local[0] * dist;
-        double cursorY = local[1] * dist;
+        double[] local = menu.getBasis().getCursorXY(pYaw, pPitch, dist);
+        double cursorX = local[0];
+        double cursorY = local[1];
 
         List<MenuButton> sorted = menu.getButtons().stream()
                 .sorted(Comparator.comparingDouble(MenuButton::getBaseZ))

@@ -111,9 +111,9 @@ public class MenuAnimator extends BukkitRunnable {
         menu.getCursor().teleport(newCursorPos);
 
         if (!hoverableButtons.isEmpty()) {
-            double[] local = menu.getBasis().projectToPlane(playerLoc.getYaw(), playerLoc.getPitch());
-            double cursorX = local[0] * distance;
-            double cursorY = local[1] * distance;
+            double[] local = menu.getBasis().getCursorXY(playerLoc.getYaw(), playerLoc.getPitch(), distance);
+            double cursorX = local[0];
+            double cursorY = local[1];
 
             for (MenuButton btn : hoverableButtons) {
                 double dx = cursorX - btn.getBaseX();
