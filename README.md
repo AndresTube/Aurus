@@ -34,7 +34,7 @@ No inventory windows. No chest GUI. Just world-space menus.
 ## Installation
 
 1. Install **PacketEvents 2.x** on your Paper server.
-2. Drop `Aurus-1.1.3-BETA.jar` into your `plugins/` folder.
+2. Drop `Aurus-1.1.4-BETA.jar` into your `plugins/` folder.
 3. Start the server — default menus are created in `plugins/Aurus/menus/`.
 4. Open a menu in-game: `/au open welcome_server`
 
@@ -56,6 +56,11 @@ No inventory windows. No chest GUI. Just world-space menus.
 welcome_menu:
   distance: 2.5
   update-in-ticks: 20
+  on-open:
+    - "[sound] entity.player.levelup, 1.0, 1.5"
+    - "[message] <green>Welcome to the server!"
+  on-close:
+    - "[message] <red>See you later!"
   components:
     title:
       type: TEXT
@@ -124,6 +129,7 @@ Alias: `/aurus`
 - **Packet-based rendering** — all entities are fake, no server-side entity overhead
 - **7 component types** — TEXT, BUTTON, INPUT, ITEM, BLOCK, ENTITY, PLAYER
 - **Animations** — math formula-driven scale, rotation, and position animations
+- **On-open / on-close actions** — run actions when a menu opens or closes
 - **Fixed locations** — optionally teleport players to a set location for the menu
 - **MiniMessage + PAPI** — full text formatting and placeholder support
 - **Custom click sounds** — per-button sound customization
