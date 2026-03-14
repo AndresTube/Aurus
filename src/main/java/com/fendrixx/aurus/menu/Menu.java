@@ -30,6 +30,7 @@ public class Menu {
     private boolean closed = false;
     private boolean couldFlyBefore;
     private boolean updatePlaceholders = true;
+    private List<String> onCloseActions;
     private CameraBasis basis;
 
     public Menu(Aurus plugin, Player player) {
@@ -48,6 +49,7 @@ public class Menu {
         this.couldFlyBefore = player.getAllowFlight();
         this.menuDistance = section.getDouble("distance", 2.5);
         this.updatePlaceholders = section.getBoolean("update-placeholders", true);
+        this.onCloseActions = section.getStringList("on-close");
 
         String locationStr = section.getString("location");
         Location fixedLoc = locationStr != null ? parseLocation(locationStr) : null;
@@ -87,12 +89,14 @@ public class Menu {
 
         player.teleportAsync(fixedLoc).thenAccept(success -> {
             if (!success || !player.isOnline() || closed) return;
+            player.setVelocity(new org.bukkit.util.Vector(0, 0, 0));
 
             Bukkit.getScheduler().runTaskLater(plugin, () -> {
                 if (closed || !player.isOnline()) return;
 
                 camera.spawnAt(plugin, fixedLoc, () -> {
                     player.teleport(fixedLoc);
+                    player.setVelocity(new org.bukkit.util.Vector(0, 0, 0));
                     finishSetup(section);
                 });
             }, 5L);
@@ -132,6 +136,10 @@ public class Menu {
         player.addPotionEffect(
                 new PotionEffect(PotionEffectType.INVISIBILITY, Integer.MAX_VALUE, 0, false, false, false));
 
+        List<String> onOpen = section.getStringList("on-open");
+        if (!onOpen.isEmpty())
+            renderer.getActionProcessor().processList(player, onOpen, this::close);
+
         int delay = section.getInt("update-in-ticks", 20);
         this.animator = new MenuAnimator(this, player, buttons, menuDistance, delay);
         this.animator.runTaskTimer(plugin, 0L, 1L);
@@ -162,6 +170,9 @@ public class Menu {
         if (closed)
             return;
         closed = true;
+
+        if (onCloseActions != null && !onCloseActions.isEmpty() && player.isOnline())
+            renderer.getActionProcessor().processList(player, onCloseActions, null);
 
         if (oldLocation != null && player.isOnline())
             player.teleport(oldLocation);

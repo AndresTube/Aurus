@@ -12,7 +12,7 @@ import revxrsal.commands.annotation.SuggestWith;
 import net.kyori.adventure.text.minimessage.MiniMessage;
 import org.bukkit.entity.Player;
 
-@Command("aurus")
+@Command({"aurus", "au"})
 public class AurusCommand {
 
     private static final MiniMessage MM = MiniMessage.miniMessage();
@@ -24,7 +24,7 @@ public class AurusCommand {
         this.plugin = plugin;
     }
 
-    @Command("aurus")
+    @Command({"aurus", "au"})
     public void defaultCommand(BukkitCommandActor actor) {
         actor.reply(MM.deserialize(PREFIX + "<dark_gray>[<yellow>?<dark_gray>] <gray>Available commands: <white>open, close, reload, debug"));
     }

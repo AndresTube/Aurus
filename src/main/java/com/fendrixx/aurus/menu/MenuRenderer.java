@@ -95,7 +95,7 @@ public class MenuRenderer {
                 yield new MenuButton(entityId, null, player, null, null, "ENTITY", null, conf, actionProcessor, baseX, baseY, this, loc, closeAction);
             }
             case "PLAYER" -> {
-                String skinTarget = actionProcessor.parse(player, conf.getString("skin", player.getName()));
+                String skinTarget = actionProcessor.parse(player, conf.getString("skin", player.getName())).replace("%player%", player.getName());
                 String nametag = actionProcessor.parse(player, conf.getString("nametag", ""));
                 float headYawRot = (float) conf.getDouble("rotation.x-head", 0);
                 float headPitchRot = (float) conf.getDouble("rotation.y-head", 0);
