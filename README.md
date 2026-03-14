@@ -1,6 +1,6 @@
 # Aurus
 
-![Version](https://img.shields.io/badge/Version-1.1.3_BETA-yellow?style=flat-square)
+![Version](https://img.shields.io/badge/Version-1.1.4_BETA-yellow?style=flat-square)
 ![Software](https://img.shields.io/badge/Software-Paper-blue?style=flat-square)
 ![Author](https://img.shields.io/badge/Author-Fendrixx-red?style=flat-square)
 
