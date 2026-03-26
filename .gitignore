@@ -1,6 +1,37 @@
+# build output
 target/
+**/target/
 dependency-reduced-pom.xml
-Aurus.iml
+
+# IDE
 .idea/
-backups/
+*.iml
 .vscode/
+.settings/
+.project
+.classpath
+*.swp
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# logs
+*.log
+logs/
+
+# backups
+backups/
+backup-*.txt
+
+# JitPack
+jitpack.yml
+
+# runtime generated JARs (keep resource JARs in src)
+*.jar
+!plugin/src/main/resources/**
+
+# so i dont look like a vibecoder LOL
+.claude/

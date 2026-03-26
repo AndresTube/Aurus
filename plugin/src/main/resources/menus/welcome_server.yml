@@ -1,0 +1,81 @@
+welcome_server:
+  areas:
+    main:
+      type: STATIC
+      x: 0
+      y: 0
+      size-x: 8.0
+      size-y: 6.0
+      update-ticks: 20
+      open-animation: scale
+      close-animation: scale
+      animation-duration: 10
+      components:
+        title:
+          # Types: TEXT, BUTTON, ITEM, BLOCK
+          type: "TEXT"
+          # Text only works for TEXTs and BUTTONs
+          text: "<yellow>¡Welcome to <gradient:red:dark_red>MyServer.com</gradient><yellow>!"
+          background: false
+          x: 0.0
+          y: 2.5
+          size: 3.8
+        play:
+          type: "BUTTON"
+          text: "Play"
+          x: -3.0
+          y: 0.1
+          size: 2.0
+          actions:
+            # available actions in the documentation
+            - '[close]'
+          rotation:
+            x: 0
+            y: 45
+            z: 0
+        options:
+          type: "BUTTON"
+          text: "Options"
+          x: -3.0
+          y: -0.6
+          size: 1.0
+          actions:
+            - '[openmenu] name_menu'
+          rotation:
+            x: 0
+            y: 35
+            z: 0
+        quit:
+          type: "BUTTON"
+          text: "<red>Quit"
+          x: -3.0
+          y: -1.1
+          size: 1.0
+          actions:
+            - '[close]'
+          rotation:
+            x: 0
+            y: 35
+            z: 0
+        announce:
+          type: "TEXT"
+          text: "<yellow>ANNOUNCE"
+          background: false
+          x: 3.0
+          y: -0.3
+          size: 1.5
+          rotation:
+            x: 0
+            y: -35
+            z: 0
+        cosmetic:
+          type: "TEXT"
+          text: "!New <gradient:blue:dark_blue>Cat</gradient> Cosmetic!"
+          background: false
+          x: 3.0
+          y: -0.7
+          size: 1.0
+          rotation:
+            x: 0
+            y: -35
+            z: 0

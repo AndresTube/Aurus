@@ -1,0 +1,108 @@
+scroll_test:
+  distance: 2.5
+  areas:
+    header:
+      type: STATIC
+      x: 0
+      y: 2.5
+      size-x: 6.0
+      size-y: 1.5
+      open-animation: scale
+      animation-duration: 8
+      components:
+        title:
+          type: TEXT
+          text: "<gradient:gold:yellow>Scroll Test Menu</gradient>"
+          background: false
+          x: 0
+          y: 0
+          size: 2.5
+    list:
+      type: SCROLL
+      x: 0
+      y: -0.5
+      size-x: 4.0
+      size-y: 3.0
+      update-ticks: 20
+      open-animation: left
+      animation-duration: 10
+      components:
+        item_1:
+          type: BUTTON
+          text: "<green>[ Item 1 ]"
+          x: 0
+          y: 2.0
+          size: 1.0
+          actions:
+            - "[message] <green>You clicked Item 1!"
+        item_2:
+          type: BUTTON
+          text: "<green>[ Item 2 ]"
+          x: 0
+          y: 1.0
+          size: 1.0
+          actions:
+            - "[message] <green>You clicked Item 2!"
+        item_3:
+          type: BUTTON
+          text: "<yellow>[ Item 3 ]"
+          x: 0
+          y: 0.0
+          size: 1.0
+          actions:
+            - "[message] <yellow>You clicked Item 3!"
+        item_4:
+          type: BUTTON
+          text: "<yellow>[ Item 4 ]"
+          x: 0
+          y: -1.0
+          size: 1.0
+          actions:
+            - "[message] <yellow>You clicked Item 4!"
+        item_5:
+          type: BUTTON
+          text: "<gold>[ Item 5 ]"
+          x: 0
+          y: -2.0
+          size: 1.0
+          actions:
+            - "[message] <gold>You clicked Item 5!"
+        item_6:
+          type: BUTTON
+          text: "<gold>[ Item 6 ]"
+          x: 0
+          y: -3.0
+          size: 1.0
+          actions:
+            - "[message] <gold>You clicked Item 6!"
+        item_7:
+          type: BUTTON
+          text: "<red>[ Item 7 ]"
+          x: 0
+          y: -4.0
+          size: 1.0
+          actions:
+            - "[message] <red>You clicked Item 7!"
+        item_8:
+          type: BUTTON
+          text: "<red>[ Item 8 ]"
+          x: 0
+          y: -5.0
+          size: 1.0
+          actions:
+            - "[message] <red>You clicked Item 8!"
+    footer:
+      type: STATIC
+      x: 0
+      y: -2.8
+      size-x: 4.0
+      size-y: 1.0
+      components:
+        close_btn:
+          type: BUTTON
+          text: "<red>[ Close ]"
+          x: 0
+          y: 0
+          size: 0.8
+          actions:
+            - "[close]"
