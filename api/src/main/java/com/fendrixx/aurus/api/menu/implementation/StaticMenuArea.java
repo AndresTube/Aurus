@@ -10,14 +10,14 @@ import org.bukkit.entity.Player;
 
 import java.util.Collection;
 
-public record StaticMenuArea(Collection<EntityComponent<?>> components,
+public record StaticMenuArea(Collection<EntityComponent<?,?>> components,
                              int updateTicks,
                              AreaType areaType,
                              Vector3D vector3D) implements MenuArea {
 
   @Override
   public void update(Player player, Location location) {
-    for (EntityComponent<?> component : this.components()) {
+    for (EntityComponent<?,?> component : this.components()) {
       component.execute(player, ActionType.UPDATE, location);
     }
   }

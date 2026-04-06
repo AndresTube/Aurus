@@ -12,12 +12,12 @@ public interface MenuArea {
   Vector3D vector3D();
   int updateTicks();
   AreaType areaType();
-  Collection<EntityComponent<?>> components();
+  Collection<EntityComponent<?,?>> components();
   void update(Player player, Location location);
   void quit(Player player);
 
   interface Builder {
-    <T extends EntityComponent<T>> Builder appendComponent(EntityComponent<T> entityComponent);
+    <T extends EntityComponent<?,T>> Builder appendComponent(EntityComponent<?,T> entityComponent);
     Builder updateTicks(int ticks);
     Builder areaType(AreaType type);
     Builder vector3D(Vector3D vector3D);
