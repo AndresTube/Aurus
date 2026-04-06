@@ -40,7 +40,7 @@ public class PAPIExpansion extends PlaceholderExpansion {
         UUID uuid = player.getUniqueId();
         if (params.equalsIgnoreCase("active_menu")) return menuManager.getActiveMenuString(uuid);
         if (params.startsWith("variable_")) {
-            String varName = params.replace("variable_", "");
+            String varName = params.substring("variable_".length());
 
             return processor.getValue(varName);
         }

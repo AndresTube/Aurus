@@ -3,6 +3,7 @@ package com.fendrixx.aurus.listeners;
 import com.fendrixx.aurus.Aurus;
 import com.fendrixx.aurus.api.component.AreaType;
 import com.fendrixx.aurus.api.event.ComponentClickEvent;
+import com.fendrixx.aurus.debug.DebugManager;
 import com.fendrixx.aurus.menu.Menu;
 import com.fendrixx.aurus.menu.MenuArea;
 import com.fendrixx.aurus.menu.MenuButton;
@@ -99,16 +100,16 @@ public class InteractionListener implements Listener {
                     Bukkit.getPluginManager().callEvent(clickEvent);
                     if (clickEvent.isCancelled()) return;
 
-                    if (plugin.getDebugManager().isEnabled(player.getUniqueId())) {
-                        plugin.getDebugManager().log(player.getName() + " clicked [" + btn.getType() + "] in area [" +
+                    if (DebugManager.INSTANCE.isEnabled(player.getUniqueId())) {
+                        DebugManager.INSTANCE.log(player.getName() + " clicked [" + btn.getType() + "] in area [" +
                                 area.getId() + "] at (" + btn.getBaseX() + ", " + btn.getBaseY() + ") actions=" +
                                 btn.getConfig().getStringList("actions"));
                     }
                     if ("INPUT".equalsIgnoreCase(btn.getType())) {
                         plugin.getInputProcessor().startInput(player, btn.getVariableName(),
                                 btn.getConfig().getString("fallback-message"));
-                        if (plugin.getDebugManager().isEnabled(player.getUniqueId())) {
-                            plugin.getDebugManager().log("  INPUT variable=" + btn.getVariableName());
+                        if (DebugManager.INSTANCE.isEnabled(player.getUniqueId())) {
+                            DebugManager.INSTANCE.log("  INPUT variable=" + btn.getVariableName());
                         }
                     }
                     btn.onClick();

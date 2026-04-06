@@ -108,7 +108,7 @@ public class Aurus extends JavaPlugin {
             @Override
             public void onPacketReceive(PacketReceiveEvent event) {
                 if (event.getPacketType() == PacketType.Play.Client.INTERACT_ENTITY) {
-                    Player player = (Player) event.getPlayer();
+                    Player player = event.getPlayer();
                     if (menuManager.getActiveMenu(player.getUniqueId()) != null) {
                         event.setCancelled(true);
                         Bukkit.getScheduler().runTask(Aurus.this, () -> listener.handle3DClick(player));
