@@ -54,7 +54,7 @@ public final class Menu {
     for (List<MenuArea> areas : tickBuckets.values()) {
       for (MenuArea area : areas) {
         final Vector3D vector3D = area.vector3D();
-        for (EntityComponent<?> component : area.components()) {
+        for (EntityComponent<?,?> component : area.components()) {
           component.execute(player, ActionType.RENDER, relative.add(vector3D.x(), vector3D.y(), vector3D.z()));
         }
       }
