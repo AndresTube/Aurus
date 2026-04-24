@@ -42,6 +42,7 @@ public class Menu {
     private String menuId;
     private ItemStack[] savedHotbar;
     private boolean hasScrollArea = false;
+    private int updateTaskId = -1;
 
     public Menu(Aurus plugin, Player player) {
         this.plugin = plugin;
@@ -167,6 +168,7 @@ public class Menu {
                             btn.setBaseZ(cz);
                             btn.setAreaLocalX(cx);
                             btn.setAreaLocalY(cy);
+                            btn.checkViewRequirements();
                             menuArea.addButton(compKey, btn);
                         }
                     }
@@ -207,6 +209,17 @@ public class Menu {
 
         this.animator = new MenuAnimator(this, player, menuDistance);
         this.animator.runTaskTimer(plugin, 0L, 1L);
+
+        this.updateTaskId = Bukkit.getScheduler().runTaskTimer(plugin, () -> {
+            if (closed || !player.isOnline()) return;
+            if (!updatePlaceholders) return;
+            for (MenuArea area : areas) {
+                area.tickUpdateCounter();
+                if (area.shouldUpdate()) {
+                    area.updatePlaceholders(player);
+                }
+            }
+        }, 1L, 1L).getTaskId();
     }
 
     private void spawnCursor() {
@@ -256,6 +269,10 @@ public class Menu {
     }
 
     public void close() {
+        close(false);
+    }
+
+    public void close(boolean immediate) {
         if (closed)
             return;
         closed = true;
@@ -269,7 +286,7 @@ public class Menu {
         boolean hasCloseAnimations = areas.stream()
                 .anyMatch(a -> a.getCloseAnimation() != AnimationType.NONE);
 
-        if (hasCloseAnimations && player.isOnline()) {
+        if (!immediate && hasCloseAnimations && player.isOnline()) {
             int maxDuration = 0;
             for (MenuArea area : areas) {
                 if (area.getCloseAnimation() != AnimationType.NONE) {
@@ -284,6 +301,9 @@ public class Menu {
     }
 
     private void finalCleanup() {
+        if (updateTaskId != -1) {
+            Bukkit.getScheduler().cancelTask(updateTaskId);
+        }
         if (animator != null)
             animator.cancel();
         camera.remove();

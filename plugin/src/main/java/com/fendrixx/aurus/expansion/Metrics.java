@@ -46,6 +46,7 @@ import org.bukkit.configuration.file.YamlConfiguration;
 import org.bukkit.entity.Player;
 import org.bukkit.plugin.Plugin;
 
+@SuppressWarnings("deprecation")
 public class Metrics {
 
     private final Plugin plugin;

@@ -55,18 +55,23 @@ public class MenuArea {
     }
 
     public boolean isComponentVisible(MenuButton btn) {
-        if (type != AreaType.SCROLL) return true;
-        double localY = btn.getAreaLocalY() + scrollOffset;
-        return localY >= -sizeY / 2.0 && localY <= sizeY / 2.0;
+        if (type == AreaType.SCROLL) {
+            double localY = btn.getAreaLocalY() + scrollOffset;
+            return localY >= -sizeY / 2.0 && localY <= sizeY / 2.0;
+        } else if (type == AreaType.SCROLL_HORIZONTAL) {
+            double localX = btn.getAreaLocalX() + scrollOffset;
+            return localX >= -sizeX / 2.0 && localX <= sizeX / 2.0;
+        }
+        return true;
     }
 
     public void scroll(double delta, Menu menu, Player player) {
-        if (type != AreaType.SCROLL) return;
+        if (type != AreaType.SCROLL && type != AreaType.SCROLL_HORIZONTAL) return;
         scrollOffset += delta * 0.5;
 
         for (MenuButton btn : buttons) {
-            double worldX = areaX + btn.getAreaLocalX();
-            double worldY = areaY + btn.getAreaLocalY() + scrollOffset;
+            double worldX = areaX + btn.getAreaLocalX() + (type == AreaType.SCROLL_HORIZONTAL ? scrollOffset : 0);
+            double worldY = areaY + btn.getAreaLocalY() + (type == AreaType.SCROLL ? scrollOffset : 0);
             Location loc = menu.calculateComponentLocation(worldX, worldY, btn.getBaseZ());
             FakeEntityFactory.teleportEntity(player, btn.getEntityId(), loc);
 
@@ -77,6 +82,7 @@ public class MenuArea {
 
     public void updatePlaceholders(Player player) {
         for (MenuButton btn : buttons) {
+            btn.checkViewRequirements();
             if (isComponentVisible(btn)) {
                 btn.updateText(player);
             }
@@ -141,5 +147,5 @@ public class MenuArea {
     public Map<String, MenuButton> getButtonMap() { return buttonMap; }
     public AreaAnimator getAnimator() { return animator; }
     public double getScrollOffset() { return scrollOffset; }
-    public boolean hasScrollArea() { return type == AreaType.SCROLL; }
+    public boolean hasScrollArea() { return type == AreaType.SCROLL || type == AreaType.SCROLL_HORIZONTAL; }
 }

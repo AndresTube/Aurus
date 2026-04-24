@@ -37,6 +37,9 @@ public class MenuButton {
     private int hoverEntityId;
     private UUID hoverFakeUUID;
     private boolean hoverActive = false;
+    private final java.util.List<String> viewRequirements;
+    private final java.util.List<String> actionRequirements;
+    private final java.util.List<String> denyActions;
 
     public MenuButton(int entityId, UUID fakeUUID, Player viewer, String rawText, Runnable onClick,
                       String type, String variableName, ConfigurationSection config,
@@ -57,6 +60,9 @@ public class MenuButton {
         this.renderer = renderer;
         this.spawnLocation = spawnLocation;
         this.closeAction = closeAction;
+        this.viewRequirements = config.getStringList("view-requirements");
+        this.actionRequirements = config.getStringList("requirements");
+        this.denyActions = config.getStringList("deny-actions");
 
         double size = config.getDouble("size", 1.0);
         ConfigurationSection hitbox = config.getConfigurationSection("hitbox");
@@ -178,8 +184,22 @@ public class MenuButton {
     }
 
     public void onClick() {
+        if (!actionRequirements.isEmpty()) {
+            if (!com.fendrixx.aurus.processors.ConditionEvaluator.evaluate(viewer, actionRequirements, actionProcessor)) {
+                if (denyActions != null && !denyActions.isEmpty()) {
+                    actionProcessor.processList(viewer, denyActions, closeAction);
+                }
+                return;
+            }
+        }
         if (onClick != null)
             onClick.run();
+    }
+
+    public void checkViewRequirements() {
+        if (viewRequirements.isEmpty()) return;
+        boolean meets = com.fendrixx.aurus.processors.ConditionEvaluator.evaluate(viewer, viewRequirements, actionProcessor);
+        setVisible(meets, viewer);
     }
 
     public void setHovered(boolean status) {

@@ -8,30 +8,30 @@ import org.bukkit.event.EventHandler;
 import org.bukkit.event.Listener;
 import org.bukkit.event.player.AsyncPlayerChatEvent;
 
-import java.util.HashMap;
 import java.util.Map;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
 
 public class InputProcessor implements Listener {
     private final Aurus plugin;
-    private final Map<UUID, String> playersEditing = new ConcurrentHashMap<>();
-    private final Map<String, String> savedValues = new ConcurrentHashMap<>();
+    private final Map<UUID, InputSession> playersEditing = new ConcurrentHashMap<>();
+    private final Map<UUID, Map<String, String>> savedValues = new ConcurrentHashMap<>();
 
     public InputProcessor(Aurus plugin) {
         this.plugin = plugin;
     }
 
-    public void startInput(Player player, String variableName, String fallbackMessage) {
-        playersEditing.put(player.getUniqueId(), variableName);
+    public void startSession(Player player, InputSession session, String fallbackMessage) {
+        playersEditing.put(player.getUniqueId(), session);
         if (fallbackMessage != null && !fallbackMessage.isEmpty()) {
             player.sendMessage(ColorUtils.format(fallbackMessage));
         } else {
             player.sendMessage(ColorUtils.format("<dark_gray>[<yellow>!<dark_gray>] <gray>Write in chat the input for "
-                    + variableName + " <dark_gray>(or put 'cancel')<gray>."));
+                    + session.getVariableName() + " <dark_gray>(or put 'cancel')<gray>."));
         }
     }
 
+    @SuppressWarnings("deprecation")
     @EventHandler
     public void onChat(AsyncPlayerChatEvent event) {
         Player player = event.getPlayer();
@@ -42,7 +42,8 @@ public class InputProcessor implements Listener {
 
         event.setCancelled(true);
         String message = event.getMessage();
-        String variableName = playersEditing.get(uuid);
+        InputSession session = playersEditing.get(uuid);
+        String variableName = session.getVariableName();
 
         DebugManager debug = plugin.getDebugManager();
         if (message.equalsIgnoreCase("cancel")) {
@@ -50,23 +51,29 @@ public class InputProcessor implements Listener {
             if (debug.isEnabled(uuid)) {
                 debug.log(player.getName() + " cancelled input for variable=" + variableName);
             }
+            playersEditing.remove(uuid);
         } else {
-            savedValues.put(variableName, message);
+            if (!session.validate(message)) {
+                player.sendMessage(ColorUtils.format(session.getErrorMessage()));
+                return; // Re-prompting without removing session
+            }
+
+            savedValues.computeIfAbsent(uuid, k -> new ConcurrentHashMap<>()).put(variableName, message);
             player.sendMessage(
                     ColorUtils.format("<dark_gray>[<green>✔<dark_gray>] <gray>Input saved in " + variableName));
             if (debug.isEnabled(uuid)) {
                 debug.log(player.getName() + " set variable=" + variableName + " value=" + message);
             }
+            playersEditing.remove(uuid);
         }
-
-        playersEditing.remove(uuid);
     }
 
-    public void setValue(String varName, String value) {
-        savedValues.put(varName, value);
+    public void setValue(UUID uuid, String varName, String value) {
+        savedValues.computeIfAbsent(uuid, k -> new ConcurrentHashMap<>()).put(varName, value);
     }
 
-    public String getValue(String varName) {
-        return savedValues.getOrDefault(varName, "...");
+    public String getValue(UUID uuid, String varName) {
+        Map<String, String> playerVals = savedValues.get(uuid);
+        return playerVals != null ? playerVals.getOrDefault(varName, "...") : "...";
     }
 }

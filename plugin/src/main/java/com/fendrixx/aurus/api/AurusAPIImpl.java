@@ -77,12 +77,12 @@ public class AurusAPIImpl implements AurusAPI {
 
     @Override
     public void setVariable(Player player, String name, String value) {
-        plugin.getInputProcessor().setValue(name, value);
+        plugin.getInputProcessor().setValue(player.getUniqueId(), name, value);
     }
 
     @Override
     public String getVariable(Player player, String name) {
-        return plugin.getInputProcessor().getValue(name);
+        return plugin.getInputProcessor().getValue(player.getUniqueId(), name);
     }
 
     @Override

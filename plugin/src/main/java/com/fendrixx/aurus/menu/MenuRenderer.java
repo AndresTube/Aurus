@@ -70,12 +70,33 @@ public class MenuRenderer {
             }
             case "ITEM" -> {
                 String mat = actionProcessor.parse(player, conf.getString("material", "STONE"));
-                ItemStack item = new ItemStack(Material.matchMaterial(mat));
-                if (conf.contains("model-id")) {
-                    ItemMeta meta = item.getItemMeta();
-                    meta.setCustomModelData(conf.getInt("model-id"));
-                    item.setItemMeta(meta);
+                ItemStack item;
+                
+                String base64 = conf.getString("base64");
+                if (base64 != null && !base64.isEmpty()) {
+                    item = new ItemStack(Material.PLAYER_HEAD);
+                    org.bukkit.inventory.meta.SkullMeta meta = (org.bukkit.inventory.meta.SkullMeta) item.getItemMeta();
+                    org.bukkit.profile.PlayerProfile profile = Bukkit.createPlayerProfile(UUID.randomUUID());
+                    try {
+                        byte[] decodedBytes = java.util.Base64.getDecoder().decode(base64);
+                        String decodedString = new String(decodedBytes, java.nio.charset.StandardCharsets.UTF_8);
+                        int urlIndex = decodedString.indexOf("\"url\":\"");
+                        if (urlIndex != -1) {
+                            String url = decodedString.substring(urlIndex + 7, decodedString.indexOf("\"", urlIndex + 7));
+                            profile.getTextures().setSkin(new java.net.URL(url));
+                            meta.setOwnerProfile(profile);
+                            item.setItemMeta(meta);
+                        }
+                    } catch (Exception ignored) {}
+                } else {
+                    item = new ItemStack(Material.matchMaterial(mat) != null ? Material.matchMaterial(mat) : Material.STONE);
+                    if (conf.contains("model-id")) {
+                        ItemMeta meta = item.getItemMeta();
+                        meta.setCustomModelData(conf.getInt("model-id"));
+                        item.setItemMeta(meta);
+                    }
                 }
+
                 int entityId = FakeEntityFactory.spawnFakeItemDisplay(player, loc, item, size, rotX, rotY, rotZ);
                 yield new MenuButton(entityId, null, player, null, null, "ITEM", null, conf, actionProcessor, baseX, baseY, this, loc, closeAction);
             }

@@ -36,10 +36,27 @@ public class ActionProcessor {
             String menuId = cmd.substring(11).trim();
             if (closeCallback != null)
                 closeCallback.run();
+                
+            com.fendrixx.aurus.menu.Menu currentActive = plugin.getMenuManager().getActiveMenu(player.getUniqueId());
+            if (currentActive != null && currentActive.getMenuId() != null) {
+                plugin.getMenuHistoryManager().push(player, currentActive.getMenuId());
+            }
+
             Bukkit.getScheduler().runTaskLater(plugin, () -> {
                 if (player.isOnline())
                     plugin.getMenuManager().openMenu(player, menuId);
             }, 2L);
+        } else if (cmd.equalsIgnoreCase("[back]")) {
+            if (closeCallback != null)
+                closeCallback.run();
+                
+            String lastMenu = plugin.getMenuHistoryManager().pop(player);
+            if (lastMenu != null) {
+                Bukkit.getScheduler().runTaskLater(plugin, () -> {
+                    if (player.isOnline())
+                        plugin.getMenuManager().openMenu(player, lastMenu);
+                }, 2L);
+            }
         } else if (cmd.startsWith("[sound] ")) {
             String[] parts = cmd.substring(8).split(", ");
             try {

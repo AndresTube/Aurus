@@ -48,9 +48,13 @@ public class MenuManager {
     }
 
     public void closeMenu(Player player) {
+        closeMenu(player, false);
+    }
+
+    public void closeMenu(Player player, boolean immediate) {
         Menu menu = activeMenus.remove(player.getUniqueId());
         if (menu != null) {
-            menu.close();
+            menu.close(immediate);
         }
     }
 
@@ -73,7 +77,7 @@ public class MenuManager {
 
     public void closeAll() {
         for (Menu menu : new java.util.ArrayList<>(activeMenus.values())) {
-            menu.close();
+            menu.close(true);
         }
         activeMenus.clear();
     }

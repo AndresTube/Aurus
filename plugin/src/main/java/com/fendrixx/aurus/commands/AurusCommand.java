@@ -3,7 +3,7 @@ package com.fendrixx.aurus.commands;
 import com.fendrixx.aurus.Aurus;
 import revxrsal.commands.annotation.Command;
 import revxrsal.commands.annotation.Optional;
-import revxrsal.commands.annotation.Suggest;
+
 import revxrsal.commands.autocomplete.SuggestionProvider;
 import revxrsal.commands.bukkit.actor.BukkitCommandActor;
 import revxrsal.commands.annotation.Subcommand;

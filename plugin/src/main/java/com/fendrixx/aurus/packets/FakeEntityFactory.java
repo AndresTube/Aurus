@@ -116,6 +116,7 @@ public class FakeEntityFactory {
         send(viewer, new WrapperPlayServerEntityMetadata(entityId, metadata));
     }
 
+    @SuppressWarnings("deprecation")
     public static void setScale(Player viewer, int entityId, double scale) {
         if (!SUPPORTS_SCALE || scale == 1.0) return;
         WrapperPlayServerUpdateAttributes.Property prop = new WrapperPlayServerUpdateAttributes.Property(

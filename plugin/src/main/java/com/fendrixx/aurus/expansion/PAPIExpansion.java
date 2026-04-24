@@ -1,23 +1,21 @@
 package com.fendrixx.aurus.expansion;
 
+import com.fendrixx.aurus.Aurus;
 import com.fendrixx.aurus.menu.MenuManager;
 import com.fendrixx.aurus.processors.InputProcessor;
 import me.clip.placeholderapi.expansion.PlaceholderExpansion;
 import org.bukkit.entity.Player;
-import org.bukkit.plugin.Plugin;
-import org.jetbrains.annotations.NotNull;
 
 import java.util.UUID;
 
 public class PAPIExpansion extends PlaceholderExpansion {
 
     private final InputProcessor processor;
-    private MenuManager menuManager;
+    private final MenuManager menuManager;
 
-    public PAPIExpansion(InputProcessor processor, Plugin plugin) {
-
+    public PAPIExpansion(InputProcessor processor, Aurus plugin) {
         this.processor = processor;
-        this.menuManager = menuManager;
+        this.menuManager = plugin.getMenuManager();
     }
 
     @Override
@@ -42,7 +40,7 @@ public class PAPIExpansion extends PlaceholderExpansion {
         if (params.startsWith("variable_")) {
             String varName = params.replace("variable_", "");
 
-            return processor.getValue(varName);
+            return processor.getValue(uuid, varName);
         }
         return null;
     }

@@ -34,6 +34,7 @@ public class Aurus extends JavaPlugin {
     private ActionProcessor actionProcessor;
     private InputProcessor inputProcessor;
     private DebugManager debugManager;
+    private com.fendrixx.aurus.menu.MenuHistoryManager menuHistoryManager;
     private final String prefix = "<dark_gray>[<gradient:dark_purple:yellow> Aurus </gradient><dark_gray>] ";
 
     @Override
@@ -50,7 +51,7 @@ public class Aurus extends JavaPlugin {
     @Override
     public void onEnable() {
         int pluginId = 29986;
-        Metrics metrics = new Metrics(this, pluginId);
+        new Metrics(this, pluginId);
 
         PacketEvents.getAPI().init();
         this.adventure = BukkitAudiences.create(this);
@@ -60,6 +61,7 @@ public class Aurus extends JavaPlugin {
         this.actionProcessor = new ActionProcessor(this);
         this.inputProcessor = new InputProcessor(this);
         this.debugManager = new DebugManager();
+        this.menuHistoryManager = new com.fendrixx.aurus.menu.MenuHistoryManager();
 
         if (Bukkit.getPluginManager().getPlugin("PlaceholderAPI") != null) {
             new PAPIExpansion(this.inputProcessor, this).register();
@@ -160,5 +162,9 @@ public class Aurus extends JavaPlugin {
 
     public DebugManager getDebugManager() {
         return this.debugManager;
+    }
+
+    public com.fendrixx.aurus.menu.MenuHistoryManager getMenuHistoryManager() {
+        return this.menuHistoryManager;
     }
 }

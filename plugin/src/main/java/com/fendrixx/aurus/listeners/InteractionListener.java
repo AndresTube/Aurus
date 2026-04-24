@@ -105,8 +105,15 @@ public class InteractionListener implements Listener {
                                 btn.getConfig().getStringList("actions"));
                     }
                     if ("INPUT".equalsIgnoreCase(btn.getType())) {
-                        plugin.getInputProcessor().startInput(player, btn.getVariableName(),
-                                btn.getConfig().getString("fallback-message"));
+                        org.bukkit.configuration.ConfigurationSection conf = btn.getConfig();
+                        com.fendrixx.aurus.processors.InputSession session = new com.fendrixx.aurus.processors.InputSession(
+                                btn.getVariableName(),
+                                conf.getString("regex", null),
+                                conf.getInt("min-length", 0),
+                                conf.getInt("max-length", 0),
+                                conf.getString("error-message", null)
+                        );
+                        plugin.getInputProcessor().startSession(player, session, conf.getString("fallback-message"));
                         if (plugin.getDebugManager().isEnabled(player.getUniqueId())) {
                             plugin.getDebugManager().log("  INPUT variable=" + btn.getVariableName());
                         }
@@ -149,7 +156,7 @@ public class InteractionListener implements Listener {
         double cursorY = local[1];
 
         for (MenuArea area : menu.getAreas()) {
-            if (area.getType() == AreaType.SCROLL && area.containsCursor(cursorX, cursorY)) {
+            if ((area.getType() == AreaType.SCROLL || area.getType() == AreaType.SCROLL_HORIZONTAL) && area.containsCursor(cursorX, cursorY)) {
                 area.scroll(scrollDelta, menu, player);
                 break;
             }
@@ -158,6 +165,8 @@ public class InteractionListener implements Listener {
 
     @EventHandler
     public void onQuit(PlayerQuitEvent event) {
-        plugin.getMenuManager().closeMenu(event.getPlayer());
+        plugin.getMenuManager().closeMenu(event.getPlayer(), true);
+        lastClick.remove(event.getPlayer().getUniqueId());
+        plugin.getMenuHistoryManager().clear(event.getPlayer());
     }
 }

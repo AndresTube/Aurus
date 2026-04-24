@@ -1,13 +1,11 @@
 package com.fendrixx.aurus.menu;
 
-import com.fendrixx.aurus.Aurus;
 import com.fendrixx.aurus.api.component.AnimationType;
 import com.fendrixx.aurus.packets.FakeEntityFactory;
 import org.bukkit.Bukkit;
 import org.bukkit.entity.Player;
 
 public class AreaAnimator {
-    private AnimationType currentType;
     private int duration;
     private int elapsed;
     private boolean active;
@@ -16,7 +14,6 @@ public class AreaAnimator {
 
     public void startOpen(AnimationType animType, int duration, Player player, MenuArea area, Menu menu) {
         if (animType == AnimationType.NONE) return;
-        this.currentType = animType;
         this.duration = duration;
         this.elapsed = 0;
         this.active = true;
@@ -63,7 +60,6 @@ public class AreaAnimator {
             if (onComplete != null) onComplete.run();
             return;
         }
-        this.currentType = animType;
         this.duration = duration;
         this.elapsed = 0;
         this.active = true;
