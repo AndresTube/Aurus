@@ -2,7 +2,6 @@ package com.fendrixx.aurus.menu;
 
 import com.fendrixx.aurus.packets.FakeEntityFactory;
 import com.fendrixx.aurus.util.MathUtil;
-
 import net.objecthunter.exp4j.Expression;
 import org.bukkit.Location;
 import org.bukkit.configuration.ConfigurationSection;
@@ -42,11 +41,11 @@ public class MenuAnimator extends BukkitRunnable {
                 ConfigurationSection anim = conf.getConfigurationSection("animations");
                 if (anim == null) continue;
 
-                Expression scaleExpr = anim.contains("scale-formula") ? MathUtil.compile(anim.getString("scale-formula")) : null;
-                Expression rotExpr = anim.contains("rotation-formula") ? MathUtil.compile(anim.getString("rotation-formula")) : null;
-                Expression xExpr = anim.contains("x-formula") ? MathUtil.compile(anim.getString("x-formula")) : null;
-                Expression yExpr = anim.contains("y-formula") ? MathUtil.compile(anim.getString("y-formula")) : null;
-                Expression zExpr = anim.contains("z-formula") ? MathUtil.compile(anim.getString("z-formula")) : null;
+                Expression scaleExpr = compile(anim, "scale-formula", btn);
+                Expression rotExpr = compile(anim, "rotation-formula", btn);
+                Expression xExpr = compile(anim, "x-formula", btn);
+                Expression yExpr = compile(anim, "y-formula", btn);
+                Expression zExpr = compile(anim, "z-formula", btn);
 
                 boolean hasTransform = scaleExpr != null || rotExpr != null;
                 boolean hasPosition = xExpr != null || yExpr != null || zExpr != null;
@@ -64,6 +63,25 @@ public class MenuAnimator extends BukkitRunnable {
         this.hasAnimations = !entries.isEmpty();
     }
 
+    private Expression compile(ConfigurationSection animation, String key, MenuButton button) {
+        if (!animation.contains(key)) return null;
+        String formula = animation.getString(key);
+        Expression expression = MathUtil.compile(formula);
+        if (expression == null && formula != null && !formula.isBlank()) {
+            menu.getPlayer().sendMessage("<red>Aurus: invalid animation formula <yellow>" + key + "</yellow> on <white>" + button.getType() + "</white>. Animation disabled.");
+        }
+        return expression;
+    }
+
+    private double evaluate(Expression expression, double t) {
+        if (expression == null) return 0;
+        try {
+            return expression.setVariable("t", t).evaluate();
+        } catch (RuntimeException ignored) {
+            return 0;
+        }
+    }
+
     @Override
     public void run() {
         if (menu.getCamera().getTripod() == null || !player.isOnline()) {
@@ -71,31 +89,31 @@ public class MenuAnimator extends BukkitRunnable {
             return;
         }
 
-        // Tick area animators
         for (MenuArea area : menu.getAreas()) {
             area.getAnimator().tick();
         }
 
-        // Formula animations
         if (hasAnimations) {
             ticks += 0.05;
             for (AnimatedEntry e : animatedEntries) {
                 if (e.hasPosition) {
-                    double rx = e.xExpr != null ? e.xExpr.setVariable("t", ticks).evaluate() : 0;
-                    double ry = e.yExpr != null ? e.yExpr.setVariable("t", ticks).evaluate() : 0;
-                    double rz = e.zExpr != null ? e.zExpr.setVariable("t", ticks).evaluate() : 0;
+                    double rx = evaluate(e.xExpr, ticks);
+                    double ry = evaluate(e.yExpr, ticks);
+                    double rz = evaluate(e.zExpr, ticks);
                     Location loc = menu.calculateComponentLocation(e.baseX + rx, e.baseY + ry, e.baseZ + rz);
                     FakeEntityFactory.teleportEntity(player, e.button.getEntityId(), loc);
                 }
                 if (e.hasTransform) {
-                    float scale = e.scaleExpr != null ? (float) e.scaleExpr.setVariable("t", ticks).evaluate() : e.baseSize;
-                    float rotZ = e.rotExpr != null ? (float) e.rotExpr.setVariable("t", ticks).evaluate() : 0;
+                    float scale = e.scaleExpr != null ? (float) evaluate(e.scaleExpr, ticks) : e.baseSize;
+                    if (!Float.isFinite(scale)) scale = e.baseSize;
+                    scale = Math.max(0f, scale);
+                    float rotZ = e.rotExpr != null ? (float) evaluate(e.rotExpr, ticks) : 0;
+                    if (!Float.isFinite(rotZ)) rotZ = 0;
                     FakeEntityFactory.setDisplayTransform(player, e.button.getEntityId(), scale, 0, 0, rotZ);
                 }
             }
         }
 
-        // Cursor position
         Location playerLoc = player.getLocation();
         Location newCursorPos = menu.getBasis().getCursorLocation(
                 menu.getMenuOrigin(),
@@ -104,7 +122,6 @@ public class MenuAnimator extends BukkitRunnable {
                 distance);
         menu.getCursor().teleport(newCursorPos);
 
-        // Hover detection per area
         double[] local = menu.getBasis().getCursorXY(playerLoc.getYaw(), playerLoc.getPitch(), distance);
         double cursorX = local[0];
         double cursorY = local[1];
@@ -127,14 +144,6 @@ public class MenuAnimator extends BukkitRunnable {
             }
         }
 
-        // Per-area placeholder updates
-        if (menu.shouldUpdatePlaceholders()) {
-            for (MenuArea area : menu.getAreas()) {
-                area.tickUpdateCounter();
-                if (area.shouldUpdate()) {
-                    area.updatePlaceholders(player);
-                }
-            }
-        }
+        // Placeholder updates are handled by Menu's dedicated update task.
     }
 }
