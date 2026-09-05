@@ -5,9 +5,12 @@ import net.objecthunter.exp4j.ExpressionBuilder;
 
 import java.util.concurrent.ConcurrentHashMap;
 
-public class MathUtil {
+public final class MathUtil {
 
     private static final ConcurrentHashMap<String, Expression> EXPRESSION_CACHE = new ConcurrentHashMap<>();
+
+    private MathUtil() {
+    }
 
     public static float normalizeAngle(float angle) {
         while (angle <= -180)
@@ -17,15 +20,40 @@ public class MathUtil {
         return angle;
     }
 
+    /**
+     * Compiles a formula safely. Invalid formulas are ignored instead of
+     * preventing the whole menu from opening.
+     */
     public static Expression compile(String formula) {
-        return EXPRESSION_CACHE.computeIfAbsent(formula, f ->
-                new ExpressionBuilder(f).variable("t").build());
+        if (formula == null || formula.isBlank()) {
+            return null;
+        }
+
+        String key = formula.trim();
+        Expression cached = EXPRESSION_CACHE.get(key);
+        if (cached != null) {
+            return cached;
+        }
+
+        try {
+            Expression expression = new ExpressionBuilder(key)
+                    .variable("t")
+                    .build();
+            EXPRESSION_CACHE.putIfAbsent(key, expression);
+            return expression;
+        } catch (RuntimeException ignored) {
+            return null;
+        }
     }
 
     public static double evaluate(String formula, double t) {
         try {
-            return compile(formula).setVariable("t", t).evaluate();
-        } catch (Exception e) {
+            Expression expression = compile(formula);
+            if (expression == null) {
+                return 0;
+            }
+            return expression.setVariable("t", t).evaluate();
+        } catch (RuntimeException ignored) {
             return 0;
         }
     }
